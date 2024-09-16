@@ -86,7 +86,8 @@ export default {
   // Check if the site is in the specific sites list
   if (specificSites.includes(hostname.toLowerCase())) { 
       console.log(`Using proxy IP for ${hostname}`); 
-      // Use the proxy IP for these specific sites
+      
+      // Construct correct URL with proxy IP and original path/search
       const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
       
       // Ensure that you use correct Host header.
@@ -98,30 +99,38 @@ export default {
           body: request.body,
           redirect: 'manual',
         });
+
+        // Fetch response from proxy server
         const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+
         return proxyResponse;
-            } else {
-              console.log(`Using random hostname for ${hostname}`); // Log for debugging
-              // Default behavior for other sites
-              const randomHostname = cn_hostnames[Math.floor(Math.random() * cn_hostnames.length)];
-              const proxyUrl = 'https://' + randomHostname + url.pathname + url.search;
-              let modifiedRequest = new Request(proxyUrl, {
-                method: request.method,
-                headers: newHeaders,
-                body: request.body,
-                redirect: 'manual',
-              });
-              const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
-              // Check for 302 or 301 redirect status and return an error response
-              if ([301, 302].includes(proxyResponse.status)) {
-                return new Response(`Redirects to ${randomHostname} are not allowed.`, {
-                  status: 403,
-                  statusText: 'Forbidden',
-                });
-              }
-              // Return the response from the proxy server
-              return proxyResponse;
-            }
+   } else {
+       console.log(`Using random hostname for ${hostname}`); 
+       
+       // Default behavior for other sites
+       const randomHostname = cn_hostnames[Math.floor(Math.random() * cn_hostnames.length)];
+       const proxyUrl = 'https://' + randomHostname + url.pathname + url.search;
+
+       let modifiedRequest = new Request(proxyUrl, {
+           method: request.method,
+           headers: newHeaders,
+           body: request.body,
+           redirect: 'manual',
+         });
+
+         const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+
+         // Check for 302 or 301 redirect status and return an error response
+         if ([301, 302].includes(proxyResponse.status)) {
+             return new Response(`Redirects to ${randomHostname} are not allowed.`, {
+                 status: 403,
+                 statusText: 'Forbidden',
+             });
+         }
+
+         // Return response from proxy server
+         return proxyResponse;
+   }
         }
       } else {
         return await วเลสOverWSHandler(request);

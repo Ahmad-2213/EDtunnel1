@@ -17,74 +17,66 @@ let พร็อกซีไอพี = พร็อกซีไอพีs[Math.
 let dohURL = 'https://dns10.quad9.net/dns-query'; // https://cloudflare-dns.com/dns-query or https://dns.google/dns-query
 
 if (!isValidUUID(userID)) {
-    throw new Error('uuid is invalid');
+	throw new Error('uuid is invalid');
 }
 
 export default {
-    /**
-     * @param {import("@cloudflare/workers-types").Request} request
-     * @param {{UUID: string, พร็อกซีไอพี: string, DNS_RESOLVER_URL: string, NODE_ID: int, API_HOST: string, API_TOKEN: string}} env
-     * @param {import("@cloudflare/workers-types").ExecutionContext} ctx
-     * @returns {Promise<Response>}
-     */
-    async fetch(request, env, ctx) {
-        try {
-            userID = env.UUID || userID;
-            พร็อกซีไอพี = env.พร็อกซีไอพี || พร็อกซีไอพี;
-            dohURL = env.DNS_RESOLVER_URL || dohURL;
-            let userID_Path = userID;
-            if (userID.includes(',')) {
-                userID_Path = userID.split(',');
-            }
-            const upgradeHeader = request.headers.get('Upgrade');
-            if (!upgradeHeader || upgradeHeader !== 'websocket') {
-                const url = new URL(request.url);
-                switch (url.pathname) {
-                    case `/cf`: {
-                        return new Response(JSON.stringify(request.cf, null, 4), {
-                            status: 200,
-                            headers: {
-                                "Content-Type": "application/json;charset=utf-8",
-                                "Access-Control-Allow-Origin": "*",
-                                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                                "Access-Control-Allow-Headers": "Content-Type, Authorization",
-                            },
-                        });
-                    }
-                    case `/${userID_Path}`: {
-                        const วเลสConfig = getวเลสConfig(userID, request.headers.get('Host'));
-                        return new Response(`${วเลสConfig}`, {
-                            status: 200,
-                            headers: {
-                                "Content-Type": "text/html; charset=utf-8",
-                                "Access-Control-Allow-Origin": "*",
-                                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                                "Access-Control-Allow-Headers": "Content-Type, Authorization",
-                            }
-                        });
-                    };
-                    case `/sub/${userID_Path}`: {
-                        const url = new URL(request.url);
-                        const searchParams = url.searchParams;
-                        const วเลสSubConfig = สร้างวเลสSub(userID, request.headers.get('Host'));
-                        // Construct and return response object
-                        return new Response(btoa(วเลสSubConfig), {
-                            status: 200,
-                            headers: {
-                                "Content-Type": "text/plain;charset=utf-8",
-                                "Access-Control-Allow-Origin": "*",
-                                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                                "Access-Control-Allow-Headers": "Content-Type, Authorization",
-                            }
-                        });
-                    };
-                    case `/bestip/${userID_Path}`: {
-                        const headers = request.headers;
-                        const url = `https://sub.xf.free.hr/auto?host=${request.headers.get('Host')}&uuid=${userID}&path=/`;
-                        const bestSubConfig = await fetch(url, { headers: headers });
-                        return bestSubConfig;
-                    };
-                    default:
+	/**
+	 * @param {import("@cloudflare/workers-types").Request} request
+	 * @param {{UUID: string, พร็อกซีไอพี: string, DNS_RESOLVER_URL: string, NODE_ID: int, API_HOST: string, API_TOKEN: string}} env
+	 * @param {import("@cloudflare/workers-types").ExecutionContext} ctx
+	 * @returns {Promise<Response>}
+	 */
+	async fetch(request, env, ctx) {
+		// uuid_validator(request);
+		try {
+			userID = env.UUID || userID;
+			พร็อกซีไอพี = env.พร็อกซีไอพี || พร็อกซีไอพี;
+			dohURL = env.DNS_RESOLVER_URL || dohURL;
+			let userID_Path = userID;
+			if (userID.includes(',')) {
+				userID_Path = userID.split(',')[0];
+			}
+			const upgradeHeader = request.headers.get('Upgrade');
+			if (!upgradeHeader || upgradeHeader !== 'websocket') {
+				const url = new URL(request.url);
+				switch (url.pathname) {
+					case `/cf`: {
+						return new Response(JSON.stringify(request.cf, null, 4), {
+							status: 200,
+							headers: {
+								"Content-Type": "application/json;charset=utf-8",
+							},
+						});
+					}
+					case `/${userID_Path}`: {
+						const วเลสConfig = getวเลสConfig(userID, request.headers.get('Host'));
+						return new Response(`${วเลสConfig}`, {
+							status: 200,
+							headers: {
+								"Content-Type": "text/html; charset=utf-8",
+							}
+						});
+					};
+					case `/sub/${userID_Path}`: {
+						const url = new URL(request.url);
+						const searchParams = url.searchParams;
+						const วเลสSubConfig = สร้างวเลสSub(userID, request.headers.get('Host'));
+						// Construct and return response object
+						return new Response(btoa(วเลสSubConfig), {
+							status: 200,
+							headers: {
+								"Content-Type": "text/plain;charset=utf-8",
+							}
+						});
+					};
+					case `/bestip/${userID_Path}`: {
+						const headers = request.headers;
+						const url = `https://sub.xf.free.hr/auto?host=${request.headers.get('Host')}&uuid=${userID}&path=/`;
+						const bestSubConfig = await fetch(url, { headers: headers });
+						return bestSubConfig;
+					};
+					default:
   // For any other path, reverse proxy to 'aparat.com' and return the original response, caching it in the process
   const proxyUrl = 'https://aparat.com' + url.pathname + url.search;
   const newHeaders = new Headers(request.headers);
@@ -121,6 +113,16 @@ export default {
   }
   // Return the response from the proxy server
   return proxyResponse;
+				}
+			} else {
+				return await วเลสOverWSHandler(request);
+			}
+		} catch (err) {
+			/** @type {Error} */ let e = err;
+			return new Response(e.toString());
+		}
+	},
+};
 
 export async function uuid_validator(request) {
 	const hostname = request.headers.get('Host');

@@ -36,15 +36,8 @@ export default {
       const upgradeHeader = request.headers.get('Upgrade');
       if (!upgradeHeader || upgradeHeader !== 'websocket') {
         const url = new URL(request.url);
+        
         switch (url.pathname) {
-          case `/cf`: {
-            return new Response(JSON.stringify(request.cf, null, 4), {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json;charset=utf-8",
-              },
-            });
-          }
           case `/${userID_Path}`: {
             const วเลสConfig = getวเลสConfig(userID, request.headers.get('Host'));
             return new Response(`${วเลสConfig}`, {
@@ -73,64 +66,31 @@ export default {
             return bestSubConfig;
           };
           default:
-  // Get the hostname from the request headers
-  const hostname = request.headers.get('Host');
-  console.log(`Hostname: ${hostname}`); // Log the hostname for debugging
+            // Get the hostname from the request headers
+            const hostname = request.headers.get('Host');
+            console.log(`Hostname: ${hostname}`); // Log the hostname for debugging
 
-  const newHeaders = new Headers(request.headers);
-  newHeaders.set('cf-connecting-ip', '1.2.3.4');
-  newHeaders.set('x-forwarded-for', '1.2.3.4');
-  newHeaders.set('x-real-ip', '1.2.3.4');
-  newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
+            // Use พร็อกซีไอพี as default routing for all sites
+            const newHeaders = new Headers(request.headers);
+            newHeaders.set('cf-connecting-ip', '1.2.3.4');
+            newHeaders.set('x-forwarded-for', '1.2.3.4');
+            newHeaders.set('x-real-ip', '1.2.3.4');
+            newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
 
-  // Check if the site is in the specific sites list
-  if (specificSites.includes(hostname.toLowerCase())) { 
-      console.log(`Using proxy IP for ${hostname}`); 
-      
-      // Construct correct URL with proxy IP and original path/search
-      const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
-      
-      // Ensure that you use correct Host header.
-      newHeaders.set('Host', hostname);
+            const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
+            newHeaders.set('Host', hostname);
 
-      let modifiedRequest = new Request(proxyUrl, {
-          method: request.method,
-          headers: newHeaders,
-          body: request.body,
-          redirect: 'manual',
-        });
+            let modifiedRequest = new Request(proxyUrl, {
+              method: request.method,
+              headers: newHeaders,
+              body: request.body,
+              redirect: 'manual',
+            });
 
-        // Fetch response from proxy server
-        const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+            // Fetch response from proxy server
+            const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
 
-        return proxyResponse;
-   } else {
-       console.log(`Using random hostname for ${hostname}`); 
-       
-       // Default behavior for other sites
-       const randomHostname = cn_hostnames[Math.floor(Math.random() * cn_hostnames.length)];
-       const proxyUrl = 'https://' + randomHostname + url.pathname + url.search;
-
-       let modifiedRequest = new Request(proxyUrl, {
-           method: request.method,
-           headers: newHeaders,
-           body: request.body,
-           redirect: 'manual',
-         });
-
-         const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
-
-         // Check for 302 or 301 redirect status and return an error response
-         if ([301, 302].includes(proxyResponse.status)) {
-             return new Response(`Redirects to ${randomHostname} are not allowed.`, {
-                 status: 403,
-                 statusText: 'Forbidden',
-             });
-         }
-
-         // Return response from proxy server
-         return proxyResponse;
-   }
+            return proxyResponse;
         }
       } else {
         return await วเลสOverWSHandler(request);

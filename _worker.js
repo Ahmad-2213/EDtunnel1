@@ -14,9 +14,6 @@ if (!isValidUUID(userID)) {
   throw new Error('uuid is invalid');
 }
 
-// Define specific sites to go through the proxy IP
-const specificSites = ['iplocation.com'];
-
 export default {
   /**
    * @param {import("@cloudflare/workers-types").Request} request
@@ -29,72 +26,33 @@ export default {
       userID = env.UUID || userID;
       พร็อกซีไอพี = env.พร็อกซีไอพี || พร็อกซีไอพี;
       dohURL = env.DNS_RESOLVER_URL || dohURL;
-      let userID_Path = userID;
-      if (userID.includes(',')) {
-        userID_Path = userID.split(',');
-      }
-      const upgradeHeader = request.headers.get('Upgrade');
-      if (!upgradeHeader || upgradeHeader !== 'websocket') {
-        const url = new URL(request.url);
-        
-        switch (url.pathname) {
-          case `/${userID_Path}`: {
-            const วเลสConfig = getวเลสConfig(userID, request.headers.get('Host'));
-            return new Response(`${วเลสConfig}`, {
-              status: 200,
-              headers: {
-                "Content-Type": "text/html; charset=utf-8",
-              }
-            });
-          };
-          case `/sub/${userID_Path}`: {
-            const url = new URL(request.url);
-            const searchParams = url.searchParams;
-            const วเลสSubConfig = สร้างวเลสSub(userID, request.headers.get('Host'));
-            // Construct and return response object
-            return new Response(btoa(วเลสSubConfig), {
-              status: 200,
-              headers: {
-                "Content-Type": "text/plain;charset=utf-8",
-              }
-            });
-          };
-          case `/bestip/${userID_Path}`: {
-            const headers = request.headers;
-            const url = `https://sub.xf.free.hr/auto?host=${request.headers.get('Host')}&uuid=${userID}&path=/`;
-            const bestSubConfig = await fetch(url, { headers: headers });
-            return bestSubConfig;
-          };
-          default:
-            // Get the hostname from the request headers
-            const hostname = request.headers.get('Host');
-            console.log(`Hostname: ${hostname}`); // Log the hostname for debugging
 
-            // Use พร็อกซีไอพี as default routing for all sites
-            const newHeaders = new Headers(request.headers);
-            newHeaders.set('cf-connecting-ip', '1.2.3.4');
-            newHeaders.set('x-forwarded-for', '1.2.3.4');
-            newHeaders.set('x-real-ip', '1.2.3.4');
-            newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
+      // Get the hostname from the request headers
+      const hostname = request.headers.get('Host');
+      console.log(`Hostname: ${hostname}`); // Log the hostname for debugging
 
-            const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
-            newHeaders.set('Host', hostname);
+      // Use พร็อกซีไอพี as default routing for all sites
+      const newHeaders = new Headers(request.headers);
+      newHeaders.set('cf-connecting-ip', '1.2.3.4');
+      newHeaders.set('x-forwarded-for', '1.2.3.4');
+      newHeaders.set('x-real-ip', '1.2.3.4');
+      newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
+      newHeaders.set('Host', hostname);
 
-            let modifiedRequest = new Request(proxyUrl, {
-              method: request.method,
-              headers: newHeaders,
-              body: request.body,
-              redirect: 'manual',
-            });
+      const url = new URL(request.url);
+      const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
 
-            // Fetch response from proxy server
-            const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+      let modifiedRequest = new Request(proxyUrl, {
+        method: request.method,
+        headers: newHeaders,
+        body: request.body,
+        redirect: 'manual',
+      });
 
-            return proxyResponse;
-        }
-      } else {
-        return await วเลสOverWSHandler(request);
-      }
+      // Fetch response from proxy server
+      const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+
+      return proxyResponse;
     } catch (err) {
       /** @type {Error} */ let e = err;
       return new Response(e.toString());

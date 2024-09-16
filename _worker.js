@@ -79,11 +79,41 @@ export default {
             // Handle requests with status code other than 200
             const response = await fetch(request.url, {
               method: request.method,
-              headers: request.headers,
+              headers: {
+                ...request.headers,
+                'If-Modified-Since': 'Wed, 26 Jun 2024 12:00:00 GMT', // Example header, adjust as needed
+                'If-None-Match': 'your-etag-value', // Example header, adjust as needed
+              },
               body: request.body,
               redirect: 'manual',
             });
-            if (response.status !== 200) {
+            if (response.status === 428) {
+              // Proxy the request through the specified proxy IP with conditional headers
+              const newHeaders = new Headers(request.headers);
+              newHeaders.set('If-Modified-Since', 'Wed, 26 Jun 2024 12:00:00 GMT'); // Example header, adjust as needed
+              newHeaders.set('If-None-Match', 'your-etag-value'); // Example header, adjust as needed
+              newHeaders.set('cf-connecting-ip', '1.2.3.4');
+              newHeaders.set('x-forwarded-for', '1.2.3.4');
+              newHeaders.set('x-real-ip', '1.2.3.4');
+              newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
+              const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
+              let modifiedRequest = new Request(proxyUrl, {
+                method: request.method,
+                headers: newHeaders,
+                body: request.body,
+                redirect: 'manual',
+              });
+              const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+              // Check for 302 or 301 redirect status and return an error response
+              if ([301, 302].includes(proxyResponse.status)) {
+                return new Response(`Redirects to ${พร็อกซีไอพี} are not allowed.`, {
+                  status: 403,
+                  statusText: 'Forbidden',
+                });
+              }
+              // Return the response from the proxy server
+              return proxyResponse;
+            } else if (response.status !== 200) {
               // Proxy the request through the specified proxy IP
               const newHeaders = new Headers(request.headers);
               newHeaders.set('cf-connecting-ip', '1.2.3.4');

@@ -84,7 +84,7 @@ export default {
 							body: request.body,
 							redirect: 'manual',
 						});
-						if (originalResponse.status !== 200) {
+						if (Response.status === 428) {
 							// Proxy the request through the specified proxy IP
 							const newHeaders = new Headers(request.headers);
 							newHeaders.set('cf-connecting-ip', '1.2.3.4');

@@ -85,53 +85,42 @@ export default {
                         return bestSubConfig;
                     };
                     default:
-                        // For any other path, reverse proxy to 'ramdom website' and return the original response, caching it in the process
-                        const randomHostname = cn_hostnames[Math.floor(Math.random() * cn_hostnames.length)];
-                        const newHeaders = new Headers(request.headers);
-                        newHeaders.set('cf-connecting-ip', '1.2.3.4');
-                        newHeaders.set('x-forwarded-for', '1.2.3.4');
-                        newHeaders.set('x-real-ip', '1.2.3.4');
-                        newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
-                        newHeaders.set('Access-Control-Allow-Origin', '*');
-                        newHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-                        newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // For any other path, reverse proxy to 'aparat.com' and return the original response, caching it in the process
+  const proxyUrl = 'https://aparat.com' + url.pathname + url.search;
+  const newHeaders = new Headers(request.headers);
+  newHeaders.set('cf-connecting-ip', พร็อกซีไอพี);
+  newHeaders.set('x-forwarded-for', พร็อกซีไอพี);
+  newHeaders.set('x-real-ip', พร็อกซีไอพี);
 
-                        // Use fetch to proxy the request to 15 different domains
-                        const proxyUrl = 'https://' + randomHostname + url.pathname + url.search;
-                        let modifiedRequest = new Request(proxyUrl, {
-                            method: request.method,
-                            headers: newHeaders,
-                            body: request.body,
-                            redirect: 'manual',
-                        });
-                        const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
-                        // Check for 302 or 301 redirect status and return an error response
-                        if ([301, 302].includes(proxyResponse.status)) {
-                            return new Response(`Redirects to ${randomHostname} are not allowed.`, {
-                                status: 403,
-                                statusText: 'Forbidden',
-                            });
-                        }
-                        // Return the response from the proxy server
-                        return proxyResponse;
-                }
-            } else {
-                return await วเลสOverWSHandler(request);
-            }
-        } catch (err) {
-            /** @type {Error} */ let e = err;
-            return new Response(e.toString(), {
-                status: 500,
-                headers: {
-                    "Content-Type": "text/plain;charset=utf-8",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-                },
-            });
-        }
-    },
-};
+  let modifiedRequest = new Request(proxyUrl, {
+    method: request.method,
+    headers: newHeaders,
+    body: request.body,
+    redirect: 'manual',
+  });
+  const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+  // Check for 302 or 301 redirect status and handle it appropriately
+  if ([301, 302].includes(proxyResponse.status)) {
+    const location = proxyResponse.headers.get('Location');
+    if (location) {
+      // Handle redirect by proxying the new URL
+      const redirectUrl = new URL(location, proxyUrl);
+      const redirectedRequest = new Request(redirectUrl.href, {
+        method: request.method,
+        headers: newHeaders,
+        body: request.body,
+        redirect: 'manual',
+      });
+      return await fetch(redirectRequest, { redirect: 'manual' });
+    } else {
+      return new Response(`Redirects to ${proxyUrl} are not allowed.`, {
+        status: 403,
+        statusText: 'Forbidden',
+      });
+    }
+  }
+  // Return the response from the proxy server
+  return proxyResponse;
 
 export async function uuid_validator(request) {
 	const hostname = request.headers.get('Host');

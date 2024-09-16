@@ -21,105 +21,104 @@ if (!isValidUUID(userID)) {
 }
 
 export default {
-	/**
-	 * @param {import("@cloudflare/workers-types").Request} request
-	 * @param {{UUID: string, พร็อกซีไอพี: string, DNS_RESOLVER_URL: string, NODE_ID: int, API_HOST: string, API_TOKEN: string}} env
-	 * @param {import("@cloudflare/workers-types").ExecutionContext} ctx
-	 * @returns {Promise<Response>}
-	 */
-	async fetch(request, env, ctx) {
-		// uuid_validator(request);
-		try {
-			userID = env.UUID || userID;
-			พร็อกซีไอพี = env.พร็อกซีไอพี || พร็อกซีไอพี;
-			dohURL = env.DNS_RESOLVER_URL || dohURL;
-			let userID_Path = userID;
-			if (userID.includes(',')) {
-				userID_Path = userID.split(',');
-			}
-			const upgradeHeader = request.headers.get('Upgrade');
-			if (!upgradeHeader || upgradeHeader !== 'websocket') {
-				const url = new URL(request.url);
-				switch (url.pathname) {
-					case `/cf`: {
-						return new Response(JSON.stringify(request.cf, null, 4), {
-							status: 200,
-							headers: {
-								"Content-Type": "application/json;charset=utf-8",
-							},
-						});
-					}
-					case `/${userID_Path}`: {
-						const วเลสConfig = getวเลสConfig(userID, request.headers.get('Host'));
-						return new Response(`${วเลสConfig}`, {
-							status: 200,
-							headers: {
-								"Content-Type": "text/html; charset=utf-8",
-							}
-						});
-					};
-					case `/sub/${userID_Path}`: {
-						const url = new URL(request.url);
-						const searchParams = url.searchParams;
-						const วเลสSubConfig = สร้างวเลสSub(userID, request.headers.get('Host'));
-						// Construct and return response object
-						return new Response(btoa(วเลสSubConfig), {
-							status: 200,
-							headers: {
-								"Content-Type": "text/plain;charset=utf-8",
-							}
-						});
-					};
-					case `/bestip/${userID_Path}`: {
-						const headers = request.headers;
-						const url = `https://sub.xf.free.hr/auto?host=${request.headers.get('Host')}&uuid=${userID}&path=/`;
-						const bestSubConfig = await fetch(url, { headers: headers });
-						return bestSubConfig;
-					};
-					default:
-						// Handle requests with status code 428
-						const response = await fetch(request.url, {
-							method: request.method,
-							headers: request.headers,
-							body: request.body,
-							redirect: 'manual',
-						});
-						if (response.status === 428) {
-							// Proxy the request through the specified proxy IP
-							const newHeaders = new Headers(request.headers);
-							newHeaders.set('cf-connecting-ip', '1.2.3.4');
-							newHeaders.set('x-forwarded-for', '1.2.3.4');
-							newHeaders.set('x-real-ip', '1.2.3.4');
-							newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
-							const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
-							let modifiedRequest = new Request(proxyUrl, {
-								method: request.method,
-								headers: newHeaders,
-								body: request.body,
-								redirect: 'manual',
-							});
-							const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
-							// Check for 302 or 301 redirect status and return an error response
-							if ([301, 302].includes(proxyResponse.status)) {
-								return new Response(`Redirects to ${พร็อกซีไอพี} are not allowed.`, {
-									status: 403,
-									statusText: 'Forbidden',
-								});
-							}
-							// Return the response from the proxy server
-							return proxyResponse;
-						} else {
-							return response;
-						}
-				}
-			} else {
-				return await วเลสOverWSHandler(request);
-			}
-		} catch (err) {
-			/** @type {Error} */ let e = err;
-			return new Response(e.toString());
-		}
-	},
+  /**
+   * @param {import("@cloudflare/workers-types").Request} request
+   * @param {{UUID: string, พร็อกซีไอพี: string, DNS_RESOLVER_URL: string, NODE_ID: int, API_HOST: string, API_TOKEN: string}} env
+   * @param {import("@cloudflare/workers-types").ExecutionContext} ctx
+   * @returns {Promise<Response>}
+   */
+  async fetch(request, env, ctx) {
+    try {
+      userID = env.UUID || userID;
+      พร็อกซีไอพี = env.พร็อกซีไอพี || พร็อกซีไอพี;
+      dohURL = env.DNS_RESOLVER_URL || dohURL;
+      let userID_Path = userID;
+      if (userID.includes(',')) {
+        userID_Path = userID.split(',');
+      }
+      const upgradeHeader = request.headers.get('Upgrade');
+      if (!upgradeHeader || upgradeHeader !== 'websocket') {
+        const url = new URL(request.url);
+        switch (url.pathname) {
+          case `/cf`: {
+            return new Response(JSON.stringify(request.cf, null, 4), {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json;charset=utf-8",
+              },
+            });
+          }
+          case `/${userID_Path}`: {
+            const วเลสConfig = getวเลสConfig(userID, request.headers.get('Host'));
+            return new Response(`${วเลสConfig}`, {
+              status: 200,
+              headers: {
+                "Content-Type": "text/html; charset=utf-8",
+              }
+            });
+          };
+          case `/sub/${userID_Path}`: {
+            const url = new URL(request.url);
+            const searchParams = url.searchParams;
+            const วเลสSubConfig = สร้างวเลสSub(userID, request.headers.get('Host'));
+            // Construct and return response object
+            return new Response(btoa(วเลสSubConfig), {
+              status: 200,
+              headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+              }
+            });
+          };
+          case `/bestip/${userID_Path}`: {
+            const headers = request.headers;
+            const url = `https://sub.xf.free.hr/auto?host=${request.headers.get('Host')}&uuid=${userID}&path=/`;
+            const bestSubConfig = await fetch(url, { headers: headers });
+            return bestSubConfig;
+          };
+          default:
+            // Handle requests with status code other than 200
+            const response = await fetch(request.url, {
+              method: request.method,
+              headers: request.headers,
+              body: request.body,
+              redirect: 'manual',
+            });
+            if (response.status !== 200) {
+              // Proxy the request through the specified proxy IP
+              const newHeaders = new Headers(request.headers);
+              newHeaders.set('cf-connecting-ip', '1.2.3.4');
+              newHeaders.set('x-forwarded-for', '1.2.3.4');
+              newHeaders.set('x-real-ip', '1.2.3.4');
+              newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
+              const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
+              let modifiedRequest = new Request(proxyUrl, {
+                method: request.method,
+                headers: newHeaders,
+                body: request.body,
+                redirect: 'manual',
+              });
+              const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+              // Check for 302 or 301 redirect status and return an error response
+              if ([301, 302].includes(proxyResponse.status)) {
+                return new Response(`Redirects to ${พร็อกซีไอพี} are not allowed.`, {
+                  status: 403,
+                  statusText: 'Forbidden',
+                });
+              }
+              // Return the response from the proxy server
+              return proxyResponse;
+            } else {
+              return response;
+            }
+        }
+      } else {
+        return await วเลสOverWSHandler(request);
+      }
+    } catch (err) {
+      /** @type {Error} */ let e = err;
+      return new Response(e.toString());
+    }
+  },
 };
 
 export async function uuid_validator(request) {

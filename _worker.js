@@ -121,6 +121,8 @@ export default {
                 status: 500,
                 statusText: 'Internal Server Error',
               });
+            } finally {
+              // Add any cleanup code here if needed
             }
           }
         }
@@ -134,6 +136,8 @@ export default {
         status: 500,
         statusText: 'Internal Server Error',
       });
+    } finally {
+      // Add any cleanup code here if needed
     }
   },
 
@@ -256,6 +260,7 @@ export default {
     });
   },
 
+  // Other functions...
   async handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log,) {
 
     /**

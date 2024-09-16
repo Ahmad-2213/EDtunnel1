@@ -118,7 +118,7 @@ export default {
 						return proxyResponse;
 					}
 				}
-			} else {
+			} finally {
 				return await วเลสOverWSHandler(request);
 			}
 		} catch (err) {

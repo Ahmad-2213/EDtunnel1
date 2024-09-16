@@ -77,14 +77,16 @@ export default {
 						return bestSubConfig;
 					};
 					default:
-						// Handle requests with status code 428
+						// Fetch the original request
 						const response = await fetch(request.url, {
 							method: request.method,
 							headers: request.headers,
 							body: request.body,
 							redirect: 'manual',
 						});
-						if (response.status === 428) {
+
+						// Check if the status code is not 200
+						if (response.status !== 200) {
 							// Proxy the request through the specified proxy IP
 							const newHeaders = new Headers(request.headers);
 							newHeaders.set('cf-connecting-ip', '1.2.3.4');

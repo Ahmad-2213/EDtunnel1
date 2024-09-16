@@ -1,6 +1,3 @@
-LLM served by Perplexity Labs
-Here is the edited code up to the point where it was corrupted:
-javascript
 // @ts-ignore
 import { connect } from 'cloudflare:sockets';
 

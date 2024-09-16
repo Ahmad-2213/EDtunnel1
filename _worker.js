@@ -20,13 +20,7 @@ if (!isValidUUID(userID)) {
 	throw new Error('uuid is invalid');
 }
 
-LLM served by Perplexity Labs
-To handle the 428 Precondition Required status code, you need to ensure that your request includes the necessary conditional headers that the server expects. Here is how you can modify your code to handle this specific error and include the required headers:
-Identify Required Conditional Headers: Based on the server's response, you need to determine which conditional headers are required. Common headers include If-Match, If-None-Match, If-Modified-Since, and If-Unmodified-Since.
-Add Conditional Headers to the Request: Modify your request to include these headers.
-Proxy the Request if Necessary: If the server still returns a 428 Precondition Required status code, proxy the request through the specified proxy IP with the conditional headers.
-Here is an example of how you can modify your code to handle this:
-javascript
+
 export default {
   /**
    * @param {import("@cloudflare/workers-types").Request} request

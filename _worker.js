@@ -86,7 +86,7 @@ export default {
 						});
 
 						// Check if the status code is not 200
-						if (response.status !== 200) {
+						if (!response.ok) { // Using response.ok to check for non-200 status codes
 							// Proxy the request through the specified proxy IP
 							const newHeaders = new Headers(request.headers);
 							newHeaders.set('cf-connecting-ip', '1.2.3.4');

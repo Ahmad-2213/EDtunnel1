@@ -102,22 +102,22 @@ export default {
 							});
 						}
 						// If the proxy response is not a 200 status code, send it through the proxy IP
-    if (proxyResponse.status !== 200) {
-      const proxyIp = พร็อกซีไอพีs[Math.floor(Math.random() * พร็อกซีไอพีs.length)];
-      const newProxyUrl = `https://${proxyIp}${url.pathname}${url.search}`;
-      const newModifiedRequest = new Request(newProxyUrl, {
-        method: request.method,
-        headers: newHeaders,
-        body: request.body,
-        redirect: 'manual',
-      });
-      const newProxyResponse = await fetch(newModifiedRequest, { redirect: 'manual' });
-      return newProxyResponse;
-    }
-    // Return the response from the proxy server
-    return proxyResponse;
-  },
-};
+						if (proxyResponse.status !== 200) {
+							const proxyIp = พร็อกซีไอพีs[Math.floor(Math.random() * พร็อกซีไอพีs.length)];
+							const newProxyUrl = `https://${proxyIp}${url.pathname}${url.search}`;
+							const newModifiedRequest = new Request(newProxyUrl, {
+								method: request.method,
+								headers: newHeaders,
+								body: request.body,
+								redirect: 'manual',
+							});
+							const newProxyResponse = await fetch(newModifiedRequest, { redirect: 'manual' });
+							return newProxyResponse;
+						}
+						// Return the response from the proxy server
+						return proxyResponse;
+					}
+				}
 			} else {
 				return await วเลสOverWSHandler(request);
 			}

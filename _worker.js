@@ -15,7 +15,7 @@ if (!isValidUUID(userID)) {
 }
 
 // Define specific sites to go through the proxy IP
-const specificSites = ['aparat.com'];
+const specificSites = ['live.cdn.asset.aparat.com'];
 
 export default {
   /**

@@ -77,40 +77,52 @@ export default {
 						return bestSubConfig;
 					};
 					default:
-						// return new Response('Not found', { status: 404 });
-						// For any other path, reverse proxy to 'ramdom website' and return the original response, caching it in the process
-						const randomHostname = cn_hostnames[Math.floor(Math.random() * cn_hostnames.length)];
-						const newHeaders = new Headers(request.headers);
-						newHeaders.set('cf-connecting-ip', '1.2.3.4');
-						newHeaders.set('x-forwarded-for', '1.2.3.4');
-						newHeaders.set('x-real-ip', '1.2.3.4');
-						newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
-						// Use fetch to proxy the request to 15 different domains
-						const proxyUrl = 'https://' + randomHostname + url.pathname + url.search;
-						let modifiedRequest = new Request(proxyUrl, {
-							method: request.method,
-							headers: newHeaders,
-							body: request.body,
-							redirect: 'manual',
-						});
-						const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
-						// Check for 302 or 301 redirect status and return an error response
-						if ([301, 302].includes(proxyResponse.status)) {
-							return new Response(`Redirects to ${randomHostname} are not allowed.`, {
-								status: 403,
-								statusText: 'Forbidden',
-							});
-						}
-						// Return the response from the proxy server
-						return proxyResponse;
-				}
-			} else {
-				return await วเลสOverWSHandler(request);
-			}
-		} catch (err) {
-			/** @type {Error} */ let e = err;
-			return new Response(e.toString());
-		}
+  // For any other path, reverse proxy to 'proxyIP' if the status code is not 200
+  const newHeaders = new Headers(request.headers);
+  newHeaders.set('cf-connecting-ip', '1.2.3.4');
+  newHeaders.set('x-forwarded-for', '1.2.3.4');
+  newHeaders.set('x-real-ip', '1.2.3.4');
+  newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
+
+  const modifiedRequest = new Request(url.href, {
+    method: request.method,
+    headers: newHeaders,
+    body: request.body,
+    redirect: 'manual',
+  });
+
+  try {
+    const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+    if (proxyResponse.status !== 200) {
+      // If the status code is not 200, proxy the request through proxyIP
+      const proxyUrl = 'https://' + พร็อกซีไอพี + url.pathname + url.search;
+      let proxyRequest = new Request(proxyUrl, {
+        method: request.method,
+        headers: newHeaders,
+        body: request.body,
+        redirect: 'manual',
+      });
+      const proxiedResponse = await fetch(proxyRequest, { redirect: 'manual' });
+      console.log(`Proxied request to ${proxyUrl} due to status code ${proxyResponse.status}`);
+      return proxiedResponse;
+    } else if ([301, 302].includes(proxyResponse.status)) {
+      // If the status code is 301 or 302, return an error response
+      return new Response(`Redirects to ${randomHostname} are not allowed.`, {
+        status: 403,
+        statusText: 'Forbidden',
+      });
+    } else {
+      // Return the response from the proxy server if it's 200 OK
+      console.log(`Returning original response with status code ${proxyResponse.status}`);
+      return proxyResponse;
+    }
+  } catch (err) {
+    console.error(`Error during proxying: ${err}`);
+    return new Response(`Error during proxying: ${err}`, {
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+  }
 	},
 };
 

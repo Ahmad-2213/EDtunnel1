@@ -73,29 +73,33 @@ export default {
             return bestSubConfig;
           };
           default:
-            // Get the hostname from the request headers
-            const hostname = request.headers.get('Host');
-            console.log(`Hostname: ${hostname}`); // Log the hostname for debugging
+  // Get the hostname from the request headers
+  const hostname = request.headers.get('Host');
+  console.log(`Hostname: ${hostname}`); // Log the hostname for debugging
 
-            const newHeaders = new Headers(request.headers);
-            newHeaders.set('cf-connecting-ip', '1.2.3.4');
-            newHeaders.set('x-forwarded-for', '1.2.3.4');
-            newHeaders.set('x-real-ip', '1.2.3.4');
-            newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
+  const newHeaders = new Headers(request.headers);
+  newHeaders.set('cf-connecting-ip', '1.2.3.4');
+  newHeaders.set('x-forwarded-for', '1.2.3.4');
+  newHeaders.set('x-real-ip', '1.2.3.4');
+  newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
 
-            // Check if the site is in the specific sites list
-            if (specificSites.includes(hostname.toLowerCase())) { // Convert to lowercase for case-insensitive comparison
-              console.log(`Using proxy IP for ${hostname}`); // Log for debugging
-              // Use the proxy IP for these specific sites
-              const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
-              let modifiedRequest = new Request(proxyUrl, {
-                method: request.method,
-                headers: newHeaders,
-                body: request.body,
-                redirect: 'manual',
-              });
-              const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
-              return proxyResponse;
+  // Check if the site is in the specific sites list
+  if (specificSites.includes(hostname.toLowerCase())) { 
+      console.log(`Using proxy IP for ${hostname}`); 
+      // Use the proxy IP for these specific sites
+      const proxyUrl = `https://${พร็อกซีไอพี}${url.pathname + url.search}`;
+      
+      // Ensure that you use correct Host header.
+      newHeaders.set('Host', hostname);
+
+      let modifiedRequest = new Request(proxyUrl, {
+          method: request.method,
+          headers: newHeaders,
+          body: request.body,
+          redirect: 'manual',
+        });
+        const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+        return proxyResponse;
             } else {
               console.log(`Using random hostname for ${hostname}`); // Log for debugging
               // Default behavior for other sites

@@ -1,3 +1,6 @@
+LLM served by Perplexity Labs
+Here is the edited code up to the point where it was corrupted:
+javascript
 // @ts-ignore
 import { connect } from 'cloudflare:sockets';
 
@@ -122,12 +125,13 @@ export default {
 		} catch (err) {
 			/** @type {Error} */ let e = err;
 			return new Response(e.toString());
-		}
-		if (!upgradeHeader || upgradeHeader !== 'websocket') {
-			return await วเลสOverWSHandler(request);
+		} finally {
+			if (!upgradeHeader || upgradeHeader !== 'websocket') {
+				return await วเลสOverWSHandler(request);
+			}
 		}
 	},
-};
+}
 
 export async function uuid_validator(request) {
 	const hostname = request.headers.get('Host');

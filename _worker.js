@@ -15,7 +15,7 @@ if (!isValidUUID(userID)) {
 }
 
 // Define specific sites to go through the proxy IP
-const specificSites = ['example1.com', 'example2.com', 'example3.com'];
+const specificSites = ['aparat.com'];
 
 export default {
   /**

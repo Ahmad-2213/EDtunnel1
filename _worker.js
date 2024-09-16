@@ -123,7 +123,7 @@ export default {
       statusText: 'Internal Server Error',
     });
   }
-	},
+	}
 };
 
 export async function uuid_validator(request) {

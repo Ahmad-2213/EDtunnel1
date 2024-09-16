@@ -78,7 +78,7 @@ export default {
 					};
 					default:
 						// Fetch the original request
-						const response = await fetch(request.url, {
+						const originalResponse = await fetch(request.url, {
 							method: request.method,
 							headers: request.headers,
 							body: request.body,
@@ -86,7 +86,7 @@ export default {
 						});
 
 						// Check if the status code is not 200
-						if (!response.ok) { // Using response.ok to check for non-200 status codes
+						if (!originalResponse.ok) {
 							// Proxy the request through the specified proxy IP
 							const newHeaders = new Headers(request.headers);
 							newHeaders.set('cf-connecting-ip', '1.2.3.4');
@@ -111,7 +111,7 @@ export default {
 							// Return the response from the proxy server
 							return proxyResponse;
 						} else {
-							return response;
+							return originalResponse;
 						}
 				}
 			} else {

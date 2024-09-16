@@ -1,3 +1,6 @@
+LLM served by Perplexity Labs
+Here is the edited code up to the point where it was corrupted:
+javascript
 // @ts-ignore
 import { connect } from 'cloudflare:sockets';
 
@@ -118,12 +121,13 @@ export default {
 						return proxyResponse;
 					}
 				}
-			} finally {
-				return await วเลสOverWSHandler(request);
 			}
 		} catch (err) {
 			/** @type {Error} */ let e = err;
 			return new Response(e.toString());
+		}
+		if (!upgradeHeader || upgradeHeader !== 'websocket') {
+			return await วเลสOverWSHandler(request);
 		}
 	},
 };

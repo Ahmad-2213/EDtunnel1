@@ -264,6 +264,8 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 			port: port,
 			enableTfo: true, // Enable TCP Fast Open
 			congestionControl: 'bbr', // Use TCP BBR
+			tcpFastOpen: true, // Enable TCP Fast Open
+                        tcpNoDelay: true, // Enable TCP No Delay
 			tls: {
 enableFalseStart: true, // Enable TLS False Start
 },

@@ -247,251 +247,130 @@ maxPayload: 1048576, // Increase the maximum payload size
  * @param {import("@cloudflare/workers-types").WebSocket} webSocket The WebSocket to pass the remote socket to.
  * @param {Uint8Array} วเลสResponseHeader The วเลส response header.
  * @param {function} log The logging function.
+ * @param {boolean} isMUX Whether the connection is a MUX connection.
  * @returns {Promise<void>} The remote socket.
  */
-async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log,) {
-
-	/**
-	 * Connects to a given address and port and writes data to the socket.
-	 * @param {string} address The address to connect to.
-	 * @param {number} port The port to connect to.
-	 * @returns {Promise<import("@cloudflare/workers-types").Socket>} A Promise that resolves to the connected socket.
-	 */
-	async function connectAndWrite(address, port) {
-		/** @type {import("@cloudflare/workers-types").Socket} */
-		const tcpSocket = connect({
-			hostname: address,
-			port: port,
-			enableTfo: true, // Enable TCP Fast Open
-			congestionControl: 'bbr', // Use TCP BBR
-			tcpFastOpen: true, // Enable TCP Fast Open
-                        tcpNoDelay: true, // Enable TCP No Delay
-			tls: {
-enableFalseStart: true, // Enable TLS False Start
-},
-		});
-		remoteSocket.value = tcpSocket;
-		log(`connected to ${address}:${port}`);
-		const writer = tcpSocket.writable.getWriter();
-		await writer.write(rawClientData); // first write, nomal is tls client hello
-		writer.releaseLock();
-		return tcpSocket;
-	}
-
-	/**
-	 * Retries connecting to the remote address and port if the Cloudflare socket has no incoming data.
-	 * @returns {Promise<void>} A Promise that resolves when the retry is complete.
-	 */
-	async function retry() {
-		const tcpSocket = await connectAndWrite(พร็อกซีไอพี || addressRemote, portRemote)
-		tcpSocket.closed.catch(error => {
-			console.log('retry tcpSocket closed error', error);
-		}).finally(() => {
-			safeCloseWebSocket(webSocket);
-		})
-		remoteSocketToWS(tcpSocket, webSocket, วเลสResponseHeader, null, log);
-	}
-
-	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
-
-	// when remoteSocket is ready, pass to websocket
-	// remote--> ws
-	remoteSocketToWS(tcpSocket, webSocket, วเลสResponseHeader, retry, log);
-}
-
-/**
- * Creates a readable stream from a WebSocket server, allowing for data to be read from the WebSocket.
- * @param {import("@cloudflare/workers-types").WebSocket} webSocketServer The WebSocket server to create the readable stream from.
- * @param {string} earlyDataHeader The header containing early data for WebSocket 0-RTT.
- * @param {(info: string)=> void} log The logging function.
- * @returns {ReadableStream} A readable stream that can be used to read data from the WebSocket.
- */
-function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
-	let readableStreamCancel = false;
-	const stream = new ReadableStream({
-		start(controller) {
-			webSocketServer.addEventListener('message', (event) => {
-				const message = event.data;
-				controller.enqueue(message);
-			});
-
-			webSocketServer.addEventListener('close', () => {
-				safeCloseWebSocket(webSocketServer);
-				controller.close();
-			});
-
-			webSocketServer.addEventListener('error', (err) => {
-				log('webSocketServer has error');
-				controller.error(err);
-			});
-			const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-			if (error) {
-				controller.error(error);
-			} else if (earlyData) {
-				controller.enqueue(earlyData);
-			}
-		},
-
-		pull(controller) {
-			// if ws can stop read if stream is full, we can implement backpressure
-			// https://streams.spec.whatwg.org/#example-rs-push-backpressure
-		},
-
-		cancel(reason) {
-			log(`ReadableStream was canceled, due to ${reason}`)
-			readableStreamCancel = true;
-			safeCloseWebSocket(webSocketServer);
-		}
-	});
-
-	return stream;
-}
-
-// https://xtls.github.io/development/protocols/วเลส.html
-// https://github.com/zizifn/excalidraw-backup/blob/main/v2ray-protocol.excalidraw
-
-/**
- * Processes the วเลส header buffer and returns an object with the relevant information.
- * @param {ArrayBuffer} วเลสBuffer The วเลส header buffer to process.
- * @param {string} userID The user ID to validate against the UUID in the วเลส header.
- * @returns {{
- *  hasError: boolean,
- *  message?: string,
- *  addressRemote?: string,
- *  addressType?: number,
- *  portRemote?: number,
- *  rawDataIndex?: number,
- *  วเลสVersion?: Uint8Array,
- *  isUDP?: boolean
- * }} An object with the relevant information extracted from the วเลส header buffer.
- */
-function processวเลสHeader(วเลสBuffer, userID) {
-    if (วเลสBuffer.byteLength < 24) {
-        return {
-            hasError: true,
-            message: 'invalid data',
-        };
-    }
-
-    const version = new Uint8Array(วเลสBuffer.slice(0, 1));
-    let isValidUser = false;
-    let isUDP = false;
-    let isMUX = false;
-    const slicedBuffer = new Uint8Array(วเลสBuffer.slice(1, 17));
-    const slicedBufferString = stringify(slicedBuffer);
-    // check if userID is valid uuid or uuids split by , and contains userID in it otherwise return error message to console
-    const uuids = userID.includes(',') ? userID.split(",") : [userID];
-    // uuid_validator(hostName, slicedBufferString);
-
-    // isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim());
-    isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim()) || uuids.length === 1 && slicedBufferString === uuids.trim();
-
-    console.log(`userID: ${slicedBufferString}`);
-
-    if (!isValidUser) {
-        return {
-            hasError: true,
-            message: 'invalid user',
-        };
-    }
-
-    const optLength = new Uint8Array(วเลสBuffer.slice(17, 18));
-    //skip opt for now
-
-    const command = new Uint8Array(
-        วเลสBuffer.slice(18 + optLength, 18 + optLength + 1)
-    );
-
-    // 0x01 TCP
-    // 0x02 UDP
-    // 0x03 MUX
-    if (command === 1) {
-        isUDP = false;
-        isMUX = false;
-    } else if (command === 2) {
-        isUDP = true;
-        isMUX = false;
-    } else if (command === 3) {
-        isUDP = false;
-        isMUX = true;
+async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log, isMUX) {
+    if (isMUX) {
+        // Handle MUX connections here
+        handleMUXOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log);
     } else {
-        return {
-            hasError: true,
-            message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`,
-        };
+        // Existing TCP logic
+        await connectAndWrite(addressRemote, portRemote)
+            .then((tcpSocket) => {
+                remoteSocket.value = tcpSocket;
+                log(`connected to ${addressRemote}:${portRemote}`);
+                const writer = tcpSocket.writable.getWriter();
+                writer.write(rawClientData); // first write, nomal is tls client hello
+                writer.releaseLock();
+                remoteSocketToWS(tcpSocket, webSocket, วเลสResponseHeader, null, log);
+            })
+            .catch((error) => {
+                console.log('retry tcpSocket closed error', error);
+                // Retry logic if needed
+                retry();
+            })
+            .finally(() => {
+                safeCloseWebSocket(webSocket);
+            });
     }
-
-    const portIndex = 18 + optLength + 1;
-    const portBuffer = วเลสBuffer.slice(portIndex, portIndex + 2);
-    // port is big-Endian in raw data etc 80 == 0x005d
-    const portRemote = new DataView(portBuffer).getUint16(0);
-
-    let addressIndex = portIndex + 2;
-    const addressBuffer = new Uint8Array(
-        วเลสBuffer.slice(addressIndex, addressIndex + 1)
-    );
-
-    // 1--> ipv4  addressLength =4
-    // 2--> domain name addressLength=addressBuffer
-    // 3--> ipv6  addressLength =16
-    const addressType = addressBuffer;
-    let addressLength = 0;
-    let addressValueIndex = addressIndex + 1;
-    let addressValue = '';
-    switch (addressType) {
-        case 1:
-            addressLength = 4;
-            addressValue = new Uint8Array(
-                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-            ).join('.');
-            break;
-        case 2:
-            addressLength = new Uint8Array(
-                วเลสBuffer.slice(addressValueIndex, addressValueIndex + 1)
-            );
-            addressValueIndex += 1;
-            addressValue = new TextDecoder().decode(
-                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-            );
-            break;
-        case 3:
-            addressLength = 16;
-            const dataView = new DataView(
-                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-            );
-            // 2001:0db8:85a3:0000:0000:8a2e:0370:7334
-            const ipv6 = [];
-            for (let i = 0; i < 8; i++) {
-                ipv6.push(dataView.getUint16(i * 2).toString(16));
-            }
-            addressValue = ipv6.join(':');
-            // seems no need add [] for ipv6
-            break;
-        default:
-            return {
-                hasError: true,
-                message: `invild  addressType is ${addressType}`,
-            };
-    }
-    if (!addressValue) {
-        return {
-            hasError: true,
-            message: `addressValue is empty, addressType is ${addressType}`,
-        };
-    }
-
-    return {
-        hasError: false,
-        addressRemote: addressValue,
-        addressType,
-        portRemote,
-        rawDataIndex: addressValueIndex + addressLength,
-        วเลสVersion: version,
-        isUDP,
-        isMUX,
-    };
 }
 
+// Example of how you might handle MUX connections
+async function handleMUXOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log) {
+    // Connect to the remote address and port
+    const tcpSocket = connect({
+        hostname: addressRemote,
+        port: portRemote,
+        enableTfo: true, // Enable TCP Fast Open
+        congestionControl: 'bbr', // Use TCP BBR
+        tcpFastOpen: true, // Enable TCP Fast Open
+        tcpNoDelay: true, // Enable TCP No Delay
+        tls: {
+            enableFalseStart: true, // Enable TLS False Start
+        },
+    });
+    remoteSocket.value = tcpSocket;
+
+    // Handle MUX stream
+    const muxStream = new TransformStream({
+        start(controller) {
+            // Initialize MUX stream
+        },
+        transform(chunk, controller) {
+            // Process incoming MUX data
+            // This is a placeholder; you need to implement actual MUX logic here
+            controller.enqueue(chunk);
+        },
+        flush(controller) {
+            // Flush MUX stream
+        }
+    });
+
+    // Pipe MUX stream to WebSocket
+    muxStream.readable.pipeTo(new WritableStream({
+        async write(chunk, controller) {
+            if (webSocket.readyState !== WS_READY_STATE_OPEN) {
+                controller.error('webSocket.readyState is not open, maybe close');
+            }
+            if (วเลสResponseHeader) {
+                webSocket.send(await new Blob([วเลสResponseHeader, chunk]).arrayBuffer());
+                วเลสResponseHeader = null;
+            } else {
+                webSocket.send(chunk);
+            }
+        },
+        close() {
+            log('MUX stream is close');
+        },
+        abort(reason) {
+            log('MUX stream is abort', JSON.stringify(reason));
+        },
+    })).catch((error) => {
+        log('MUX stream pipeTo error', error);
+    });
+
+    // Handle incoming data from remote socket
+    remoteSocket.readable.pipeTo(muxStream.writable).catch((error) => {
+        log('MUX stream pipeTo error', error);
+    });
+}
+
+/**
+ * Connects to a given address and port and writes data to the socket.
+ * @param {string} address The address to connect to.
+ * @param {number} port The port to connect to.
+ * @returns {Promise<import("@cloudflare/workers-types").Socket>} A Promise that resolves to the connected socket.
+ */
+async function connectAndWrite(address, port) {
+    /** @type {import("@cloudflare/workers-types").Socket} */
+    const tcpSocket = connect({
+        hostname: address,
+        port: port,
+        enableTfo: true, // Enable TCP Fast Open
+        congestionControl: 'bbr', // Use TCP BBR
+        tcpFastOpen: true, // Enable TCP Fast Open
+        tcpNoDelay: true, // Enable TCP No Delay
+        tls: {
+            enableFalseStart: true, // Enable TLS False Start
+        },
+    });
+    return tcpSocket;
+}
+
+/**
+ * Retries connecting to the remote address and port if the Cloudflare socket has no incoming data.
+ * @returns {Promise<void>} A Promise that resolves when the retry is complete.
+ */
+async function retry() {
+    const tcpSocket = await connectAndWrite(พร็อกซีไอพี || addressRemote, portRemote)
+    tcpSocket.closed.catch(error => {
+        console.log('retry tcpSocket closed error', error);
+    }).finally(() => {
+        safeCloseWebSocket(webSocket);
+    })
+    remoteSocketToWS(tcpSocket, webSocket, วเลสResponseHeader, null, log);
+}
 
 /**
  * Converts a remote socket to a WebSocket connection.
@@ -500,70 +379,112 @@ function processวเลสHeader(วเลสBuffer, userID) {
  * @param {ArrayBuffer | null} วเลสResponseHeader The วเลส response header.
  * @param {(() => Promise<void>) | null} retry The function to retry the connection if it fails.
  * @param {(info: string) => void} log The logging function.
+ * @param {boolean} isMUX Whether the connection is a MUX connection.
  * @returns {Promise<void>} A Promise that resolves when the conversion is complete.
  */
-async function remoteSocketToWS(remoteSocket, webSocket, วเลสResponseHeader, retry, log) {
-	// remote--> ws
-	let remoteChunkCount = 0;
-	let chunks = [];
-	/** @type {ArrayBuffer | null} */
-	let วเลสHeader = วเลสResponseHeader;
-	let hasIncomingData = false; // check if remoteSocket has incoming data
-	await remoteSocket.readable
-		.pipeTo(
-			new WritableStream({
-				start() {
-				},
-				/**
-				 * 
-				 * @param {Uint8Array} chunk 
-				 * @param {*} controller 
-				 */
-				async write(chunk, controller) {
-					hasIncomingData = true;
-					remoteChunkCount++;
-					if (webSocket.readyState !== WS_READY_STATE_OPEN) {
-						controller.error(
-							'webSocket.readyState is not open, maybe close'
-						);
-					}
-					if (วเลสHeader) {
-						webSocket.send(await new Blob([วเลสHeader, chunk]).arrayBuffer());
-						วเลสHeader = null;
-					} else {
-						// console.log(`remoteSocketToWS send chunk ${chunk.byteLength}`);
-						// seems no need rate limit this, CF seems fix this??..
-						// if (remoteChunkCount > 20000) {
-						// 	// cf one package is 4096 byte(4kb),  4096 * 20000 = 80M
-						// 	await delay(1);
-						// }
-						webSocket.send(chunk);
-					}
-				},
-				close() {
-					log(`remoteConnection!.readable is close with hasIncomingData is ${hasIncomingData}`);
-					// safeCloseWebSocket(webSocket); // no need server close websocket frist for some case will casue HTTP ERR_CONTENT_LENGTH_MISMATCH issue, client will send close event anyway.
-				},
-				abort(reason) {
-					console.error(`remoteConnection!.readable abort`, reason);
-				},
-			})
-		)
-		.catch((error) => {
-			console.error(
-				`remoteSocketToWS has exception `,
-				error.stack || error
-			);
-			safeCloseWebSocket(webSocket);
-		});
+async function remoteSocketToWS(remoteSocket, webSocket, วเลสResponseHeader, retry, log, isMUX) {
+    if (isMUX) {
+        handleMUXRemoteSocketToWS(remoteSocket, webSocket, วเลสResponseHeader, retry, log);
+    } else {
+        // Existing TCP logic
+        let remoteChunkCount = 0;
+        let chunks = [];
+        let วเลสHeader = วเลสResponseHeader;
+        let hasIncomingData = false; // check if remoteSocket has incoming data
+        await remoteSocket.readable
+            .pipeTo(
+                new WritableStream({
+                    start() {
+                    },
+                    /**
+                     * 
+                     * @param {Uint8Array} chunk 
+                     * @param {*} controller 
+                     */
+                    async write(chunk, controller) {
+                        hasIncomingData = true;
+                        remoteChunkCount++;
+                        if (webSocket.readyState !== WS_READY_STATE_OPEN) {
+                            controller.error(
+                                'webSocket.readyState is not open, maybe close'
+                            );
+                        }
+                        if (วเลสHeader) {
+                            webSocket.send(await new Blob([วเลสHeader, chunk]).arrayBuffer());
+                            วเลสHeader = null;
+                        } else {
+                            // console.log(`remoteSocketToWS send chunk ${chunk.byteLength}`);
+                            // seems no need rate limit this, CF seems fix this??..
+                            // if (remoteChunkCount > 20000) {
+                            //  // cf one package is 4096 byte(4kb),  4096 * 20000 = 80M
+                            //  await delay(1);
+                            // }
+                            webSocket.send(chunk);
+                        }
+                    },
+                    close() {
+                        log(`remoteConnection!.readable is close with hasIncomingData is ${hasIncomingData}`);
+                        // safeCloseWebSocket(webSocket); // no need server close websocket frist for some case will casue HTTP ERR_CONTENT_LENGTH_MISMATCH issue, client will send close event anyway.
+                    },
+                    abort(reason) {
+                        console.error(`remoteConnection!.readable abort`, reason);
+                    },
+                })
+            )
+            .catch((error) => {
+                console.error(
+                    `remoteSocketToWS has exception `,
+                    error.stack || error
+                );
+                safeCloseWebSocket(webSocket);
+            });
 
-	// seems is cf connect socket have error,
-	// 1. Socket.closed will have error
-	// 2. Socket.readable will be close without any data coming
-	if (hasIncomingData === false && retry) {
-		log(`retry`)
-		retry();
-	}
+        // seems is cf connect socket have error,
+        // 1. Socket.closed will have error
+        // 2. Socket.readable will be close without any data coming
+        if (hasIncomingData === false && retry) {
+            log(`retry`)
+            retry();
+        }
+    }
+}
+
+// Example of how you might handle MUX connections
+async function handleMUXRemoteSocketToWS(remoteSocket, webSocket, วเลสResponseHeader, retry, log) {
+    let remoteChunkCount = 0;
+    let chunks = [];
+    let วเลสHeader = วเลสResponseHeader;
+    let hasIncomingData = false;
+
+    remoteSocket.readable.pipeTo(new WritableStream({
+        start(controller) {
+            // Initialize MUX stream
+        },
+        async write(chunk, controller) {
+            if (webSocket.readyState !== WS_READY_STATE_OPEN) {
+                controller.error('webSocket.readyState is not open, maybe close');
+            }
+            if (วเลสHeader) {
+                webSocket.send(await new Blob([วเลสResponseHeader, chunk]).arrayBuffer());
+                วเลสHeader = null;
+            } else {
+                webSocket.send(chunk);
+            }
+        },
+        close() {
+            log('MUX stream is close');
+        },
+        abort(reason) {
+            log('MUX stream is abort', JSON.stringify(reason));
+        },
+    })).catch((error) => {
+        log('MUX stream pipeTo error', error);
+    });
+
+    if (hasIncomingData === false && retry) {
+        log('retry')
+        retry();
+    }
 }
 
 /**

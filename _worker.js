@@ -145,13 +145,7 @@ export async function hashHex_f(string) {
  * @param {import("@cloudflare/workers-types").Request} request The incoming request object.
  * @returns {Promise<Response>} A Promise that resolves to a WebSocket response object.
  */
-LLM served by Perplexity Labs
-The error you're encountering is due to the function makeReadableWebSocketStream being declared multiple times. To resolve this, you need to ensure that the function is defined only once.
-Here's how you can modify your code to avoid this error:
-Remove Duplicate Declaration: Ensure that makeReadableWebSocketStream is defined only once. If you have multiple definitions, merge them into a single function or remove the duplicates.
-Update the Function: If you need to modify the behavior of makeReadableWebSocketStream to support MUX, you can do so within the single definition.
-Here's an example of how you might update your code to include MUX support while avoiding the duplicate declaration error:
-javascript
+
 // Ensure this function is defined only once
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log, supportsMux = false) {
     let readableStreamCancel = false;

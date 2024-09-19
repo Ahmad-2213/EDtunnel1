@@ -146,97 +146,190 @@ export async function hashHex_f(string) {
  * @returns {Promise<Response>} A Promise that resolves to a WebSocket response object.
  */
 async function วเลสOverWSHandler(request) {
-	const webSocketPair = new WebSocketPair();
-	const [client, webSocket] = Object.values(webSocketPair);
-	webSocket.accept({
-maxPayload: 1048576, // Increase the maximum payload size
-});
+    const webSocketPair = new WebSocketPair();
+    const [client, webSocket] = Object.values(webSocketPair);
+    webSocket.accept({
+        maxPayload: 1048576, // Increase the maximum payload size
+    });
 
-	let address = '';
-	let portWithRandomLog = '';
-	let currentDate = new Date();
-	const log = (/** @type {string} */ info, /** @type {string | undefined} */ event) => {
-		console.log(`[${currentDate} ${address}:${portWithRandomLog}] ${info}`, event || '');
-	};
-	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
+    let logicalChannels = {};
+    let nextChannelId = 1;
 
-	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
+    function addLogicalChannel() {
+        const channelId = nextChannelId++;
+        logicalChannels[channelId] = {
+            // Initialize channel state here
+        };
+        return channelId;
+    }
 
-	/** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
-	let remoteSocketWapper = {
-		value: null,
-	};
-	let udpStreamWrite = null;
-	let isDns = false;
+    function processFrame(frame) {
+        const channelId = frame.extensionData;
+        if (channelId === 0) {
+            // Handle MUX control messages
+            if (frame.opcode === 0x08) { // Close frame
+                // Close the physical connection and all logical channels
+                // ...
+            } else if (frame.opcode === 0x09) { // Ping frame
+                // Handle ping on the physical connection
+                // ...
+            }
+        } else {
+            // Handle data frames for the logical channel
+            const channel = logicalChannels[channelId];
+            if (channel) {
+                // Process the frame for the logical channel
+                // ...
+            }
+        }
+    }
 
-	// ws --> remote
-	readableWebSocketStream.pipeTo(new WritableStream({
-		async write(chunk, controller) {
-			if (isDns && udpStreamWrite) {
-				return udpStreamWrite(chunk);
-			}
-			if (remoteSocketWapper.value) {
-				const writer = remoteSocketWapper.value.writable.getWriter()
-				await writer.write(chunk);
-				writer.releaseLock();
-				return;
-			}
+    function sendFrame(channelId, data) {
+        const frame = {
+            extensionData: new Uint8Array([channelId]),
+            // ... other frame properties ...
+            data: data,
+        };
+        webSocket.send(frame);
+    }
 
-			const {
-				hasError,
-				message,
-				portRemote = 443,
-				addressRemote = '',
-				rawDataIndex,
-				วเลสVersion = new Uint8Array([0, 0]),
-				isUDP,
-			} = processวเลสHeader(chunk, userID);
-			address = addressRemote;
-			portWithRandomLog = `${portRemote} ${isUDP ? 'udp' : 'tcp'} `;
-			if (hasError) {
-				// controller.error(message);
-				throw new Error(message); // cf seems has bug, controller.error will not end stream
-			}
+    // Example of adding a new logical channel
+    function handleAddChannel() {
+        const channelId = addLogicalChannel();
+        sendFrame(0, { opcode: 0x01, data: new Uint8Array([channelId]) }); // AddChannel command
+    }
 
-			// If UDP and not DNS port, close it
-			if (isUDP && portRemote !== 53) {
-				throw new Error('UDP proxy only enabled for DNS which is port 53');
-				// cf seems has bug, controller.error will not end stream
-			}
+    let address = '';
+    let portWithRandomLog = '';
+    let currentDate = new Date();
+    const log = (/** @type {string} */ info, /** @type {string | undefined} */ event) => {
+        console.log(`[${currentDate} ${address}:${portWithRandomLog}] ${info}`, event || '');
+    };
+    const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 
-			if (isUDP && portRemote === 53) {
-				isDns = true;
-			}
+    const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
 
-			// ["version", "附加信息长度 N"]
-			const วเลสResponseHeader = new Uint8Array([วเลสVersion[0], 0]);
-			const rawClientData = chunk.slice(rawDataIndex);
+    /** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
+    let remoteSocketWapper = {
+        value: null,
+    };
+    let udpStreamWrite = null;
+    let isDns = false;
 
-			// TODO: support udp here when cf runtime has udp support
-			if (isDns) {
-				const { write } = await handleUDPOutBound(webSocket, วเลสResponseHeader, log);
-				udpStreamWrite = write;
-				udpStreamWrite(rawClientData);
-				return;
-			}
-			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log);
-		},
-		close() {
-			log(`readableWebSocketStream is close`);
-		},
-		abort(reason) {
-			log(`readableWebSocketStream is abort`, JSON.stringify(reason));
-		},
-	})).catch((err) => {
-		log('readableWebSocketStream pipeTo error', err);
-	});
+    // ws --> remote
+    readableWebSocketStream.pipeTo(new WritableStream({
+        async write(chunk, controller) {
+            if (isDns && udpStreamWrite) {
+                return udpStreamWrite(chunk);
+            }
+            if (remoteSocketWapper.value) {
+                const writer = remoteSocketWapper.value.writable.getWriter()
+                await writer.write(chunk);
+                writer.releaseLock();
+                return;
+            }
 
-	return new Response(null, {
-		status: 101,
-		webSocket: client,
-	});
+            const {
+                hasError,
+                message,
+                portRemote = 443,
+                addressRemote = '',
+                rawDataIndex,
+                วเลสVersion = new Uint8Array([0, 0]),
+                isUDP,
+            } = processวเลสHeader(chunk, userID);
+            address = addressRemote;
+            portWithRandomLog = `${portRemote} ${isUDP ? 'udp' : 'tcp'} `;
+            if (hasError) {
+                // controller.error(message);
+                throw new Error(message); // cf seems has bug, controller.error will not end stream
+            }
+
+            // If UDP and not DNS port, close it
+            if (isUDP && portRemote !== 53) {
+                throw new Error('UDP proxy only enabled for DNS which is port 53');
+                // cf seems has bug, controller.error will not end stream
+            }
+
+            if (isUDP && portRemote === 53) {
+                isDns = true;
+            }
+
+            // ["version", "附加信息长度 N"]
+            const วเลสResponseHeader = new Uint8Array([วเลสVersion, 0]);
+            const rawClientData = chunk.slice(rawDataIndex);
+
+            // TODO: support udp here when cf runtime has udp support
+            if (isDns) {
+                const { write } = await handleUDPOutBound(webSocket, วเลสResponseHeader, log);
+                udpStreamWrite = write;
+                udpStreamWrite(rawClientData);
+                return;
+            }
+            handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log);
+        },
+        close() {
+            log(`readableWebSocketStream is close`);
+        },
+        abort(reason) {
+            log(`readableWebSocketStream is abort`, JSON.stringify(reason));
+        },
+    })).catch((err) => {
+        log('readableWebSocketStream pipeTo error', err);
+    });
+
+    return new Response(null, {
+        status: 101,
+        webSocket: client,
+    });
 }
 
+function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
+    let readableStreamCancel = false;
+    const stream = new ReadableStream({
+        start(controller) {
+            webSocketServer.addEventListener('message', (event) => {
+                const message = event.data;
+                const channelId = message.extensionData;
+                const channel = logicalChannels[channelId];
+                if (channel) {
+                    controller.enqueue(message.data);
+                }
+            });
+
+            webSocketServer.addEventListener('close', () => {
+                safeCloseWebSocket(webSocketServer);
+                controller.close();
+            });
+
+            webSocketServer.addEventListener('error', (err) => {
+                log('webSocketServer has error');
+                controller.error(err);
+            });
+            const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
+            if (error) {
+                controller.error(error);
+            } else if (earlyData) {
+                controller.enqueue(earlyData);
+            }
+        },
+
+        pull(controller) {
+            // if ws can stop read if stream is full, we can implement backpressure
+            // https://streams.spec.whatwg.org/#example-rs-push-backpressure
+        },
+
+        cancel(reason) {
+            log(`ReadableStream was canceled, due to ${reason}`)
+            readableStreamCancel = true;
+            safeCloseWebSocket(webSocketServer);
+        }
+    });
+
+    return stream;
+}
+
+// ... existing code ...
 /**
  * Handles outbound TCP connections.
  *

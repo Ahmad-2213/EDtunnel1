@@ -145,6 +145,64 @@ export async function hashHex_f(string) {
  * @param {import("@cloudflare/workers-types").Request} request The incoming request object.
  * @returns {Promise<Response>} A Promise that resolves to a WebSocket response object.
  */
+LLM served by Perplexity Labs
+The error you're encountering is due to the function makeReadableWebSocketStream being declared multiple times. To resolve this, you need to ensure that the function is defined only once.
+Here's how you can modify your code to avoid this error:
+Remove Duplicate Declaration: Ensure that makeReadableWebSocketStream is defined only once. If you have multiple definitions, merge them into a single function or remove the duplicates.
+Update the Function: If you need to modify the behavior of makeReadableWebSocketStream to support MUX, you can do so within the single definition.
+Here's an example of how you might update your code to include MUX support while avoiding the duplicate declaration error:
+javascript
+// Ensure this function is defined only once
+function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log, supportsMux = false) {
+    let readableStreamCancel = false;
+    const stream = new ReadableStream({
+        start(controller) {
+            webSocketServer.addEventListener('message', (event) => {
+                const message = event.data;
+                if (supportsMux) {
+                    const channelId = message.extensionData;
+                    const channel = logicalChannels[channelId];
+                    if (channel) {
+                        controller.enqueue(message.data);
+                    }
+                } else {
+                    controller.enqueue(message);
+                }
+            });
+
+            webSocketServer.addEventListener('close', () => {
+                safeCloseWebSocket(webSocketServer);
+                controller.close();
+            });
+
+            webSocketServer.addEventListener('error', (err) => {
+                log('webSocketServer has error');
+                controller.error(err);
+            });
+            const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
+            if (error) {
+                controller.error(error);
+            } else if (earlyData) {
+                controller.enqueue(earlyData);
+            }
+        },
+
+        pull(controller) {
+            // if ws can stop read if stream is full, we can implement backpressure
+            // https://streams.spec.whatwg.org/#example-rs-push-backpressure
+        },
+
+        cancel(reason) {
+            log(`ReadableStream was canceled, due to ${reason}`)
+            readableStreamCancel = true;
+            safeCloseWebSocket(webSocketServer);
+        }
+    });
+
+    return stream;
+}
+
+// Example usage with MUX support
 async function วเลสOverWSHandler(request) {
     const webSocketPair = new WebSocketPair();
     const [client, webSocket] = Object.values(webSocketPair);
@@ -207,7 +265,7 @@ async function วเลสOverWSHandler(request) {
     };
     const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 
-    const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
+    const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log, true);
 
     /** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
     let remoteSocketWapper = {
@@ -282,51 +340,6 @@ async function วเลสOverWSHandler(request) {
         status: 101,
         webSocket: client,
     });
-}
-
-function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
-    let readableStreamCancel = false;
-    const stream = new ReadableStream({
-        start(controller) {
-            webSocketServer.addEventListener('message', (event) => {
-                const message = event.data;
-                const channelId = message.extensionData;
-                const channel = logicalChannels[channelId];
-                if (channel) {
-                    controller.enqueue(message.data);
-                }
-            });
-
-            webSocketServer.addEventListener('close', () => {
-                safeCloseWebSocket(webSocketServer);
-                controller.close();
-            });
-
-            webSocketServer.addEventListener('error', (err) => {
-                log('webSocketServer has error');
-                controller.error(err);
-            });
-            const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-            if (error) {
-                controller.error(error);
-            } else if (earlyData) {
-                controller.enqueue(earlyData);
-            }
-        },
-
-        pull(controller) {
-            // if ws can stop read if stream is full, we can implement backpressure
-            // https://streams.spec.whatwg.org/#example-rs-push-backpressure
-        },
-
-        cancel(reason) {
-            log(`ReadableStream was canceled, due to ${reason}`)
-            readableStreamCancel = true;
-            safeCloseWebSocket(webSocketServer);
-        }
-    });
-
-    return stream;
 }
 
 // ... existing code ...

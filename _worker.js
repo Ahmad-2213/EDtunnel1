@@ -628,7 +628,7 @@ readableWebSocketStream.pipeTo(new WritableStream({
 		log(`retry`)
 		retry();
 	}
-}
+
 
 /**
  * Decodes a base64 string into an ArrayBuffer.

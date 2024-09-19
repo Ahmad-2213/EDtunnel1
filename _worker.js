@@ -307,7 +307,7 @@ async function วเลสOverWSHandler(request) {
 		status: 101,
 		webSocket: client,
 	});
-}
+
 
 /**
  * Handles outbound TCP connections.

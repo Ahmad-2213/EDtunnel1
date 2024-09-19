@@ -366,127 +366,130 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
  * }} An object with the relevant information extracted from the วเลส header buffer.
  */
 function processวเลสHeader(วเลสBuffer, userID) {
-	if (วเลสBuffer.byteLength < 24) {
-		return {
-			hasError: true,
-			message: 'invalid data',
-		};
-	}
+    if (วเลสBuffer.byteLength < 24) {
+        return {
+            hasError: true,
+            message: 'invalid data',
+        };
+    }
 
-	const version = new Uint8Array(วเลสBuffer.slice(0, 1));
-	let isValidUser = false;
-	let isUDP = false;
-	const slicedBuffer = new Uint8Array(วเลสBuffer.slice(1, 17));
-	const slicedBufferString = stringify(slicedBuffer);
-	// check if userID is valid uuid or uuids split by , and contains userID in it otherwise return error message to console
-	const uuids = userID.includes(',') ? userID.split(",") : [userID];
-	// uuid_validator(hostName, slicedBufferString);
+    const version = new Uint8Array(วเลสBuffer.slice(0, 1));
+    let isValidUser = false;
+    let isUDP = false;
+    let isMUX = false;
+    const slicedBuffer = new Uint8Array(วเลสBuffer.slice(1, 17));
+    const slicedBufferString = stringify(slicedBuffer);
+    // check if userID is valid uuid or uuids split by , and contains userID in it otherwise return error message to console
+    const uuids = userID.includes(',') ? userID.split(",") : [userID];
+    // uuid_validator(hostName, slicedBufferString);
 
+    // isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim());
+    isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim()) || uuids.length === 1 && slicedBufferString === uuids.trim();
 
-	// isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim());
-	isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim()) || uuids.length === 1 && slicedBufferString === uuids[0].trim();
+    console.log(`userID: ${slicedBufferString}`);
 
-	console.log(`userID: ${slicedBufferString}`);
+    if (!isValidUser) {
+        return {
+            hasError: true,
+            message: 'invalid user',
+        };
+    }
 
-	if (!isValidUser) {
-		return {
-			hasError: true,
-			message: 'invalid user',
-		};
-	}
+    const optLength = new Uint8Array(วเลสBuffer.slice(17, 18));
+    //skip opt for now
 
-	const optLength = new Uint8Array(วเลสBuffer.slice(17, 18))[0];
-	//skip opt for now
+    const command = new Uint8Array(
+        วเลสBuffer.slice(18 + optLength, 18 + optLength + 1)
+    );
 
-	const command = new Uint8Array(
-		วเลสBuffer.slice(18 + optLength, 18 + optLength + 1)
-	)[0];
+    // 0x01 TCP
+    // 0x02 UDP
+    // 0x03 MUX
+    if (command === 1) {
+        isUDP = false;
+        isMUX = false;
+    } else if (command === 2) {
+        isUDP = true;
+        isMUX = false;
+    } else if (command === 3) {
+        isUDP = false;
+        isMUX = true;
+    } else {
+        return {
+            hasError: true,
+            message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`,
+        };
+    }
 
-	// 0x01 TCP
-	// 0x02 UDP
-	// 0x03 MUX
-	if (command === 1) {
-		isUDP = false;
-	} else if (command === 2) {
-		isUDP = true;
-	}else if (command === 3) {
-		isUDP = true;
-		ismux = true;
-	}
-	else {
-		return {
-			hasError: true,
-			message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`,
-		};
-	}
-	const portIndex = 18 + optLength + 1;
-	const portBuffer = วเลสBuffer.slice(portIndex, portIndex + 2);
-	// port is big-Endian in raw data etc 80 == 0x005d
-	const portRemote = new DataView(portBuffer).getUint16(0);
+    const portIndex = 18 + optLength + 1;
+    const portBuffer = วเลสBuffer.slice(portIndex, portIndex + 2);
+    // port is big-Endian in raw data etc 80 == 0x005d
+    const portRemote = new DataView(portBuffer).getUint16(0);
 
-	let addressIndex = portIndex + 2;
-	const addressBuffer = new Uint8Array(
-		วเลสBuffer.slice(addressIndex, addressIndex + 1)
-	);
+    let addressIndex = portIndex + 2;
+    const addressBuffer = new Uint8Array(
+        วเลสBuffer.slice(addressIndex, addressIndex + 1)
+    );
 
-	// 1--> ipv4  addressLength =4
-	// 2--> domain name addressLength=addressBuffer[1]
-	// 3--> ipv6  addressLength =16
-	const addressType = addressBuffer[0];
-	let addressLength = 0;
-	let addressValueIndex = addressIndex + 1;
-	let addressValue = '';
-	switch (addressType) {
-		case 1:
-			addressLength = 4;
-			addressValue = new Uint8Array(
-				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			).join('.');
-			break;
-		case 2:
-			addressLength = new Uint8Array(
-				วเลสBuffer.slice(addressValueIndex, addressValueIndex + 1)
-			)[0];
-			addressValueIndex += 1;
-			addressValue = new TextDecoder().decode(
-				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			);
-			break;
-		case 3:
-			addressLength = 16;
-			const dataView = new DataView(
-				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			);
-			// 2001:0db8:85a3:0000:0000:8a2e:0370:7334
-			const ipv6 = [];
-			for (let i = 0; i < 8; i++) {
-				ipv6.push(dataView.getUint16(i * 2).toString(16));
-			}
-			addressValue = ipv6.join(':');
-			// seems no need add [] for ipv6
-			break;
-		default:
-			return {
-				hasError: true,
-				message: `invild  addressType is ${addressType}`,
-			};
-	}
-	if (!addressValue) {
-		return {
-			hasError: true,
-			message: `addressValue is empty, addressType is ${addressType}`,
-		};
-	}
+    // 1--> ipv4  addressLength =4
+    // 2--> domain name addressLength=addressBuffer
+    // 3--> ipv6  addressLength =16
+    const addressType = addressBuffer;
+    let addressLength = 0;
+    let addressValueIndex = addressIndex + 1;
+    let addressValue = '';
+    switch (addressType) {
+        case 1:
+            addressLength = 4;
+            addressValue = new Uint8Array(
+                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+            ).join('.');
+            break;
+        case 2:
+            addressLength = new Uint8Array(
+                วเลสBuffer.slice(addressValueIndex, addressValueIndex + 1)
+            );
+            addressValueIndex += 1;
+            addressValue = new TextDecoder().decode(
+                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+            );
+            break;
+        case 3:
+            addressLength = 16;
+            const dataView = new DataView(
+                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+            );
+            // 2001:0db8:85a3:0000:0000:8a2e:0370:7334
+            const ipv6 = [];
+            for (let i = 0; i < 8; i++) {
+                ipv6.push(dataView.getUint16(i * 2).toString(16));
+            }
+            addressValue = ipv6.join(':');
+            // seems no need add [] for ipv6
+            break;
+        default:
+            return {
+                hasError: true,
+                message: `invild  addressType is ${addressType}`,
+            };
+    }
+    if (!addressValue) {
+        return {
+            hasError: true,
+            message: `addressValue is empty, addressType is ${addressType}`,
+        };
+    }
 
-	return {
-		hasError: false,
-		addressRemote: addressValue,
-		addressType,
-		portRemote,
-		rawDataIndex: addressValueIndex + addressLength,
-		วเลสVersion: version,
-		isUDP,
-	};
+    return {
+        hasError: false,
+        addressRemote: addressValue,
+        addressType,
+        portRemote,
+        rawDataIndex: addressValueIndex + addressLength,
+        วเลสVersion: version,
+        isUDP,
+        isMUX,
+    };
 }
 
 

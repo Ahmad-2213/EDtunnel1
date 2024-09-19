@@ -1,107 +1,117 @@
+// @ts-ignore
 import { connect } from 'cloudflare:sockets';
 
-// Generate your own UUID:
+// How to generate your own UUID:
 // [Windows] Press "Win + R", input cmd and run:  Powershell -NoExit -Command "[guid]::NewGuid()"
 let userID = '43e8276e-104b-45d7-9dac-b8a1fc7c2a24';
 
-const proxyIPs = ['72.13.122.137'];
-let proxyIP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
+const พร็อกซีไอพีs = ['72.13.122.137'];
+
+// if you want to use ipv6 or single พร็อกซีไอพี, please add comment at this line and remove comment at the next line
+let พร็อกซีไอพี = พร็อกซีไอพีs[Math.floor(Math.random() * พร็อกซีไอพีs.length)];
+// use single พร็อกซีไอพี instead of random
+// let พร็อกซีไอพี = 'cdn.xn--b6gac.eu.org';
+// ipv6 พร็อกซีไอพี example remove comment to use
+// let พร็อกซีไอพี = "[2a01:4f8:c2c:123f:64:5:6810:c55a]"
 
 let dohURL = 'https://dns10.quad9.net/dns-query'; // https://cloudflare-dns.com/dns-query or https://dns.google/dns-query
 
 if (!isValidUUID(userID)) {
-    throw new Error('uuid is invalid');
+	throw new Error('uuid is invalid');
 }
 
 export default {
-    /**
-     * @param {import("@cloudflare/workers-types").Request} request
-     * @param {{UUID: string, proxyIP: string, DNS_RESOLVER_URL: string, NODE_ID: int, API_HOST: string, API_TOKEN: string}} env
-     * @param {import("@cloudflare/workers-types").ExecutionContext} ctx
-     * @returns {Promise<Response>}
-     */
-    async fetch(request, env, ctx) {
-        try {
-            userID = env.UUID || userID;
-            proxyIP = env.proxyIP || proxyIP;
-            dohURL = env.DNS_RESOLVER_URL || dohURL;
-            let userIDPath = userID;
-            if (userID.includes(',')) {
-                userIDPath = userID.split(',');
-            }
-            const upgradeHeader = request.headers.get('Upgrade');
-            if (!upgradeHeader || upgradeHeader !== 'websocket') {
-                const url = new URL(request.url);
-                switch (url.pathname) {
-                    case `/cf`: {
-                        return new Response(JSON.stringify(request.cf, null, 4), {
-                            status: 200,
-                            headers: {
-                                "Content-Type": "application/json;charset=utf-8",
-                            },
-                        });
-                    }
-                    case `/${userIDPath}`: {
-                        const vlessConfig = getVlessConfig(userID, request.headers.get('Host'));
-                        return new Response(`${vlessConfig}`, {
-                            status: 200,
-                            headers: {
-                                "Content-Type": "text/html; charset=utf-8",
-                            }
-                        });
-                    };
-                    case `/sub/${userIDPath}`: {
-                        const url = new URL(request.url);
-                        const searchParams = url.searchParams;
-                        const vlessSubConfig = createVlessSub(userID, request.headers.get('Host'));
-                        // Construct and return response object
-                        return new Response(btoa(vlessSubConfig), {
-                            status: 200,
-                            headers: {
-                                "Content-Type": "text/plain;charset=utf-8",
-                            }
-                        });
-                    };
-                    case `/bestip/${userIDPath}`: {
-                        const headers = request.headers;
-                        const url = `https://sub.xf.free.hr/auto?host=${request.headers.get('Host')}&uuid=${userID}&path=/`;
-                        const bestSubConfig = await fetch(url, { headers: headers });
-                        return bestSubConfig;
-                    };
-                    default:
-                        // For any other path, reverse proxy to 'random website' and return the original response, caching it in the process
-                        const newHeaders = new Headers(request.headers);
-                        newHeaders.set('cf-connecting-ip', '1.2.3.4');
-                        newHeaders.set('x-forwarded-for', '1.2.3.4');
-                        newHeaders.set('x-real-ip', '1.2.3.4');
-                        newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
-                        // Use fetch to proxy the request to any domain
-                        const proxyUrl = request.url;
-                        let modifiedRequest = new Request(proxyUrl, {
-                            method: request.method,
-                            headers: newHeaders,
-                            body: request.body,
-                            redirect: 'manual',
-                        });
-                        const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
-                        // Check for 302 or 301 redirect status and return an error response
-                        if ([301, 302].includes(proxyResponse.status)) {
-                            return new Response(`Redirects are not allowed.`, {
-                                status: 403,
-                                statusText: 'Forbidden',
-                            });
-                        }
-                        // Return the response from the proxy server
-                        return proxyResponse;
-                }
-            } else {
-                return await vlessOverWSHandler(request);
-            }
-        } catch (err) {
-            /** @type {Error} */ let e = err;
-            return new Response(e.toString());
-        }
-    },
+	/**
+	 * @param {import("@cloudflare/workers-types").Request} request
+	 * @param {{UUID: string, พร็อกซีไอพี: string, DNS_RESOLVER_URL: string, NODE_ID: int, API_HOST: string, API_TOKEN: string}} env
+	 * @param {import("@cloudflare/workers-types").ExecutionContext} ctx
+	 * @returns {Promise<Response>}
+	 */
+	async fetch(request, env, ctx) {
+		// uuid_validator(request);
+		try {
+			userID = env.UUID || userID;
+			พร็อกซีไอพี = env.พร็อกซีไอพี || พร็อกซีไอพี;
+			dohURL = env.DNS_RESOLVER_URL || dohURL;
+			let userID_Path = userID;
+			if (userID.includes(',')) {
+				userID_Path = userID.split(',')[0];
+			}
+			const upgradeHeader = request.headers.get('Upgrade');
+			if (!upgradeHeader || upgradeHeader !== 'websocket') {
+				const url = new URL(request.url);
+				switch (url.pathname) {
+					case `/cf`: {
+						return new Response(JSON.stringify(request.cf, null, 4), {
+							status: 200,
+							headers: {
+								"Content-Type": "application/json;charset=utf-8",
+							},
+						});
+					}
+					case `/${userID_Path}`: {
+						const วเลสConfig = getวเลสConfig(userID, request.headers.get('Host'));
+						return new Response(`${วเลสConfig}`, {
+							status: 200,
+							headers: {
+								"Content-Type": "text/html; charset=utf-8",
+							}
+						});
+					};
+					case `/sub/${userID_Path}`: {
+						const url = new URL(request.url);
+						const searchParams = url.searchParams;
+						const วเลสSubConfig = สร้างวเลสSub(userID, request.headers.get('Host'));
+						// Construct and return response object
+						return new Response(btoa(วเลสSubConfig), {
+							status: 200,
+							headers: {
+								"Content-Type": "text/plain;charset=utf-8",
+							}
+						});
+					};
+					case `/bestip/${userID_Path}`: {
+						const headers = request.headers;
+						const url = `https://sub.xf.free.hr/auto?host=${request.headers.get('Host')}&uuid=${userID}&path=/`;
+						const bestSubConfig = await fetch(url, { headers: headers });
+						return bestSubConfig;
+					};
+					default:
+						// return new Response('Not found', { status: 404 });
+						// For any other path, reverse proxy to 'ramdom website' and return the original response, caching it in the process
+						const randomHostname = cn_hostnames[Math.floor(Math.random() * cn_hostnames.length)];
+						const newHeaders = new Headers(request.headers);
+						newHeaders.set('cf-connecting-ip', '1.2.3.4');
+						newHeaders.set('x-forwarded-for', '1.2.3.4');
+						newHeaders.set('x-real-ip', '1.2.3.4');
+						newHeaders.set('referer', 'https://www.google.com/search?q=edtunnel');
+						// Use fetch to proxy the request to 15 different domains
+						const proxyUrl = 'https://' + randomHostname + url.pathname + url.search;
+						let modifiedRequest = new Request(proxyUrl, {
+							method: request.method,
+							headers: newHeaders,
+							body: request.body,
+							redirect: 'manual',
+						});
+						const proxyResponse = await fetch(modifiedRequest, { redirect: 'manual' });
+						// Check for 302 or 301 redirect status and return an error response
+						if ([301, 302].includes(proxyResponse.status)) {
+							return new Response(`Redirects to ${randomHostname} are not allowed.`, {
+								status: 403,
+								statusText: 'Forbidden',
+							});
+						}
+						// Return the response from the proxy server
+						return proxyResponse;
+				}
+			} else {
+				return await วเลสOverWSHandler(request);
+			}
+		} catch (err) {
+			/** @type {Error} */ let e = err;
+			return new Response(e.toString());
+		}
+	},
 };
 
 export async function uuid_validator(request) {
@@ -138,7 +148,9 @@ export async function hashHex_f(string) {
 async function วเลสOverWSHandler(request) {
 	const webSocketPair = new WebSocketPair();
 	const [client, webSocket] = Object.values(webSocketPair);
-	webSocket.accept();
+	webSocket.accept({
+maxPayload: 1048576, // Increase the maximum payload size
+});
 
 	let address = '';
 	let portWithRandomLog = '';
@@ -250,6 +262,11 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 		const tcpSocket = connect({
 			hostname: address,
 			port: port,
+			enableTfo: true, // Enable TCP Fast Open
+			congestionControl: 'bbr', // Use TCP BBR
+			tls: {
+enableFalseStart: true, // Enable TLS False Start
+},
 		});
 		remoteSocket.value = tcpSocket;
 		log(`connected to ${address}:${port}`);
@@ -858,5 +875,5 @@ function สร้างวเลสSub(ไอดีผู้ใช้_เส้
 
 const cn_hostnames = [
 
-	'asiatech.ir'
+	
 ];

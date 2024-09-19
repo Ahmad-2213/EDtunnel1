@@ -324,6 +324,8 @@ async function handleMUXOutBound(remoteSocket, addressRemote, portRemote, rawCli
         transform(chunk, controller) {
             // Process incoming MUX data
             // This is a placeholder; you need to implement actual MUX logic here
+            // For example, you might need to handle multiple virtual connections
+            // and dispatch them accordingly.
             controller.enqueue(chunk);
         },
         flush(controller) {
@@ -357,6 +359,43 @@ async function handleMUXOutBound(remoteSocket, addressRemote, portRemote, rawCli
     // Handle incoming data from remote socket
     remoteSocket.readable.pipeTo(muxStream.writable).catch((error) => {
         log('MUX stream pipeTo error', error);
+    });
+
+    // Example of how you might handle multiple virtual connections
+    // This is a simplified example and may need further customization.
+    const virtualConnections = new Map();
+    let connectionId = 0;
+
+    muxStream.writable.onwrite = (chunk) => {
+        if (chunk.byteLength < 4) return; // Minimum 4 bytes for connection ID and length
+        const connectionIdBuffer = chunk.slice(0, 4);
+        const connectionId = new DataView(connectionIdBuffer).getUint32(0);
+        const lengthBuffer = chunk.slice(4, 6);
+        const length = new DataView(lengthBuffer).getUint16(0);
+        const data = chunk.slice(6, 6 + length);
+
+        if (!virtualConnections.has(connectionId)) {
+            virtualConnections.set(connectionId, new TransformStream());
+        }
+        const virtualStream = virtualConnections.get(connectionId);
+        virtualStream.writable.getWriter().write(data);
+    };
+
+    // Pipe virtual connections to WebSocket
+    virtualConnections.forEach((virtualStream) => {
+        virtualStream.readable.pipeTo(new WritableStream({
+            async write(chunk, controller) {
+                webSocket.send(chunk);
+            },
+            close() {
+                log('Virtual connection stream is close');
+            },
+            abort(reason) {
+                log('Virtual connection stream is abort', JSON.stringify(reason));
+            },
+        })).catch((error) => {
+            log('Virtual connection stream pipeTo error', error);
+        });
     });
 }
 
@@ -503,6 +542,42 @@ async function handleMUXRemoteSocketToWS(remoteSocket, webSocket, วเลสRe
         },
     })).catch((error) => {
         log('MUX stream pipeTo error', error);
+    });
+
+    // Handle multiple virtual connections
+    const virtualConnections = new Map();
+    let connectionId = 0;
+
+    remoteSocket.readable.onwrite = (chunk) => {
+        if (chunk.byteLength < 4) return; // Minimum 4 bytes for connection ID and length
+        const connectionIdBuffer = chunk.slice(0, 4);
+        const connectionId = new DataView(connectionIdBuffer).getUint32(0);
+        const lengthBuffer = chunk.slice(4, 6);
+        const length = new DataView(lengthBuffer).getUint16(0);
+        const data = chunk.slice(6, 6 + length);
+
+        if (!virtualConnections.has(connectionId)) {
+            virtualConnections.set(connectionId, new TransformStream());
+        }
+        const virtualStream = virtualConnections.get(connectionId);
+        virtualStream.writable.getWriter().write(data);
+    };
+
+    // Pipe virtual connections to WebSocket
+    virtualConnections.forEach((virtualStream) => {
+        virtualStream.readable.pipeTo(new WritableStream({
+            async write(chunk, controller) {
+                webSocket.send(chunk);
+            },
+            close() {
+                log('Virtual connection stream is close');
+            },
+            abort(reason) {
+                log('Virtual connection stream is abort', JSON.stringify(reason));
+            },
+        })).catch((error) => {
+            log('Virtual connection stream pipeTo error', error);
+        });
     });
 
     if (hasIncomingData === false && retry) {

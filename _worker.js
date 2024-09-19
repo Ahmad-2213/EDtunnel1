@@ -146,30 +146,102 @@ export async function hashHex_f(string) {
  * @returns {Promise<Response>} A Promise that resolves to a WebSocket response object.
  */
 async function วเลสOverWSHandler(request) {
-	const webSocketPair = new WebSocketPair();
-	const [client, webSocket] = Object.values(webSocketPair);
-	webSocket.accept({
-maxPayload: 1048576, // Increase the maximum payload size
-});
+    const webSocketPair = new WebSocketPair();
+    const [client, webSocket] = Object.values(webSocketPair);
+    webSocket.accept({
+        maxPayload: 1048576, // Increase the maximum payload size
+    });
 
-	let address = '';
-	let portWithRandomLog = '';
-	let currentDate = new Date();
-	const log = (/** @type {string} */ info, /** @type {string | undefined} */ event) => {
-		console.log(`[${currentDate} ${address}:${portWithRandomLog}] ${info}`, event || '');
-	};
-	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
+    let address = '';
+    let portWithRandomLog = '';
+    let currentDate = new Date();
+    const log = (/** @type {string} */ info, /** @type {string | undefined} */ event) => {
+        console.log(`[${currentDate} ${address}:${portWithRandomLog}] ${info}`, event || '');
+    };
+    const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 
-	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
+    const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
 
-	/** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
-	let remoteSocketWapper = {
-		value: null,
-	};
-	let udpStreamWrite = null;
-	let isDns = false;
+    /** @type {{ value: import("@cloudflare/workers-types").Socket | null}}*/
+    let remoteSocketWapper = {
+        value: null,
+    };
+    let udpStreamWrite = null;
+    let isDns = false;
 
-	// ws --> remote
+    // ws --> remote
+    readableWebSocketStream.pipeTo(new WritableStream({
+        async write(chunk, controller) {
+            if (isDns && udpStreamWrite) {
+                return udpStreamWrite(chunk);
+            }
+            if (remoteSocketWapper.value) {
+                const writer = remoteSocketWapper.value.writable.getWriter()
+                await writer.write(chunk);
+                writer.releaseLock();
+                return;
+            }
+
+            const {
+                hasError,
+                message,
+                portRemote = 443,
+                addressRemote = '',
+                rawDataIndex,
+                วเลสVersion = new Uint8Array([0, 0]),
+                isUDP,
+                isMUX,
+            } = processวเลสHeader(chunk, userID);
+            address = addressRemote;
+            portWithRandomLog = `${portRemote} ${isUDP ? 'udp' : 'tcp'} `;
+            if (hasError) {
+                // controller.error(message);
+                throw new Error(message); // cf seems has bug, controller.error will not end stream
+            }
+
+            // If UDP and not DNS port, close it
+            if (isUDP && portRemote !== 53) {
+                throw new Error('UDP proxy only enabled for DNS which is port 53');
+                // cf seems has bug, controller.error will not end stream
+            }
+
+            if (isUDP && portRemote === 53) {
+                isDns = true;
+            }
+
+            // ["version", "附加信息长度 N"]
+            const วเลสResponseHeader = new Uint8Array([วเลสVersion, 0]);
+            const rawClientData = chunk.slice(rawDataIndex);
+
+            // TODO: support udp here when cf runtime has udp support
+            if (isDns) {
+                const { write } = await handleUDPOutBound(webSocket, วเลสResponseHeader, log);
+                udpStreamWrite = write;
+                udpStreamWrite(rawClientData);
+                return;
+            }
+            handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log, isMUX);
+        },
+        close() {
+            log(`readableWebSocketStream is close`);
+        },
+        abort(reason) {
+            log(`readableWebSocketStream is abort`, JSON.stringify(reason));
+        },
+    })).catch((err) => {
+        log('readableWebSocketStream pipeTo error', err);
+    });
+
+    // seems is cf connect socket have error,
+    // 1. Socket.closed will have error
+    // 2. Socket.readable will be close without any data coming
+    if (hasIncomingData === false && retry) {
+        log(`retry`)
+        retry();
+    }
+    // remote--> ws
+    remoteSocketToWS(remoteSocketWapper.value, webSocket, วเลสResponseHeader, retry, log, isMUX);
+}
 	readableWebSocketStream.pipeTo(new WritableStream({
 		async write(chunk, controller) {
 			if (isDns && udpStreamWrite) {
@@ -249,8 +321,16 @@ maxPayload: 1048576, // Increase the maximum payload size
  * @param {function} log The logging function.
  * @returns {Promise<void>} The remote socket.
  */
-async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log,) {
+async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log, isMUX) {
 
+    if (isMUX) {
+        // Handle MUX logic here
+        // This might involve setting up multiple streams or handling multiplexed data
+        // For simplicity, this example just logs a message
+        log("MUX connection established");
+        // You would need to implement the actual MUX handling logic here
+        return;
+    }
 	/**
 	 * Connects to a given address and port and writes data to the socket.
 	 * @param {string} address The address to connect to.
@@ -297,6 +377,9 @@ enableFalseStart: true, // Enable TLS False Start
 	// when remoteSocket is ready, pass to websocket
 	// remote--> ws
 	remoteSocketToWS(tcpSocket, webSocket, วเลสResponseHeader, retry, log);
+	let remoteChunkCount = 0;
+        let chunks = [];
+
 }
 
 /**
@@ -362,127 +445,135 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
  *  portRemote?: number,
  *  rawDataIndex?: number,
  *  วเลสVersion?: Uint8Array,
- *  isUDP?: boolean
+ *  isUDP?: boolean,
+ *  isMUX?: boolean
  * }} An object with the relevant information extracted from the วเลส header buffer.
  */
 function processวเลสHeader(วเลสBuffer, userID) {
-	if (วเลสBuffer.byteLength < 24) {
-		return {
-			hasError: true,
-			message: 'invalid data',
-		};
-	}
+    if (วเลสBuffer.byteLength < 24) {
+        return {
+            hasError: true,
+            message: 'invalid data',
+        };
+    }
 
-	const version = new Uint8Array(วเลสBuffer.slice(0, 1));
-	let isValidUser = false;
-	let isUDP = false;
-	const slicedBuffer = new Uint8Array(วเลสBuffer.slice(1, 17));
-	const slicedBufferString = stringify(slicedBuffer);
-	// check if userID is valid uuid or uuids split by , and contains userID in it otherwise return error message to console
-	const uuids = userID.includes(',') ? userID.split(",") : [userID];
-	// uuid_validator(hostName, slicedBufferString);
+    const version = new Uint8Array(วเลสBuffer.slice(0, 1));
+    let isValidUser = false;
+    let isUDP = false;
+    let isMUX = false;
+    const slicedBuffer = new Uint8Array(วเลสBuffer.slice(1, 17));
+    const slicedBufferString = stringify(slicedBuffer);
+    // check if userID is valid uuid or uuids split by , and contains userID in it otherwise return error message to console
+    const uuids = userID.includes(',') ? userID.split(",") : [userID];
+    // uuid_validator(hostName, slicedBufferString);
 
+    // isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim());
+    isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim()) || uuids.length === 1 && slicedBufferString === uuids.trim();
 
-	// isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim());
-	isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim()) || uuids.length === 1 && slicedBufferString === uuids[0].trim();
+    console.log(`userID: ${slicedBufferString}`);
 
-	console.log(`userID: ${slicedBufferString}`);
+    if (!isValidUser) {
+        return {
+            hasError: true,
+            message: 'invalid user',
+        };
+    }
 
-	if (!isValidUser) {
-		return {
-			hasError: true,
-			message: 'invalid user',
-		};
-	}
+    const optLength = new Uint8Array(วเลสBuffer.slice(17, 18));
+    //skip opt for now
 
-	const optLength = new Uint8Array(วเลสBuffer.slice(17, 18))[0];
-	//skip opt for now
+    const command = new Uint8Array(
+        วเลสBuffer.slice(18 + optLength, 18 + optLength + 1)
+    );
 
-	const command = new Uint8Array(
-		วเลสBuffer.slice(18 + optLength, 18 + optLength + 1)
-	)[0];
+    // 0x01 TCP
+    // 0x02 UDP
+    // 0x03 MUX
+    if (command === 1) {
+        isUDP = false;
+        isMUX = false;
+    } else if (command === 2) {
+        isUDP = true;
+        isMUX = false;
+    } else if (command === 3) {
+        isUDP = false;
+        isMUX = true;
+    } else {
+        return {
+            hasError: true,
+            message: `command ${command} is not supported, command 01-tcp,02-udp,03-mux`,
+        };
+    }
 
-	// 0x01 TCP
-	// 0x02 UDP
-	// 0x03 MUX
-	if (command === 1) {
-		isUDP = false;
-	} else if (command === 2) {
-		isUDP = true;
-	}else {
-		return {
-			hasError: true,
-			message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`,
-		};
-	}
-	const portIndex = 18 + optLength + 1;
-	const portBuffer = วเลสBuffer.slice(portIndex, portIndex + 2);
-	// port is big-Endian in raw data etc 80 == 0x005d
-	const portRemote = new DataView(portBuffer).getUint16(0);
+    const portIndex = 18 + optLength + 1;
+    const portBuffer = วเลสBuffer.slice(portIndex, portIndex + 2);
+    // port is big-Endian in raw data etc 80 == 0x005d
+    const portRemote = new DataView(portBuffer).getUint16(0);
 
-	let addressIndex = portIndex + 2;
-	const addressBuffer = new Uint8Array(
-		วเลสBuffer.slice(addressIndex, addressIndex + 1)
-	);
+    let addressIndex = portIndex + 2;
+    const addressBuffer = new Uint8Array(
+        วเลสBuffer.slice(addressIndex, addressIndex + 1)
+    );
 
-	// 1--> ipv4  addressLength =4
-	// 2--> domain name addressLength=addressBuffer[1]
-	// 3--> ipv6  addressLength =16
-	const addressType = addressBuffer[0];
-	let addressLength = 0;
-	let addressValueIndex = addressIndex + 1;
-	let addressValue = '';
-	switch (addressType) {
-		case 1:
-			addressLength = 4;
-			addressValue = new Uint8Array(
-				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			).join('.');
-			break;
-		case 2:
-			addressLength = new Uint8Array(
-				วเลสBuffer.slice(addressValueIndex, addressValueIndex + 1)
-			)[0];
-			addressValueIndex += 1;
-			addressValue = new TextDecoder().decode(
-				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			);
-			break;
-		case 3:
-			addressLength = 16;
-			const dataView = new DataView(
-				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			);
-			// 2001:0db8:85a3:0000:0000:8a2e:0370:7334
-			const ipv6 = [];
-			for (let i = 0; i < 8; i++) {
-				ipv6.push(dataView.getUint16(i * 2).toString(16));
-			}
-			addressValue = ipv6.join(':');
-			// seems no need add [] for ipv6
-			break;
-		default:
-			return {
-				hasError: true,
-				message: `invild  addressType is ${addressType}`,
-			};
-	}
-	if (!addressValue) {
-		return {
-			hasError: true,
-			message: `addressValue is empty, addressType is ${addressType}`,
-		};
-	}
+    // 1--> ipv4  addressLength =4
+    // 2--> domain name addressLength=addressBuffer
+    // 3--> ipv6  addressLength =16
+    const addressType = addressBuffer;
+    let addressLength = 0;
+    let addressValueIndex = addressIndex + 1;
+    let addressValue = '';
+    switch (addressType) {
+        case 1:
+            addressLength = 4;
+            addressValue = new Uint8Array(
+                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+            ).join('.');
+            break;
+        case 2:
+            addressLength = new Uint8Array(
+                วเลสBuffer.slice(addressValueIndex, addressValueIndex + 1)
+            );
+            addressValueIndex += 1;
+            addressValue = new TextDecoder().decode(
+                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+            );
+            break;
+        case 3:
+            addressLength = 16;
+            const dataView = new DataView(
+                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+            );
+            // 2001:0db8:85a3:0000:0000:8a2e:0370:7334
+            const ipv6 = [];
+            for (let i = 0; i < 8; i++) {
+                ipv6.push(dataView.getUint16(i * 2).toString(16));
+            }
+            addressValue = ipv6.join(':');
+            // seems no need add [] for ipv6
+            break;
+        default:
+            return {
+                hasError: true,
+                message: `invalid addressType is ${addressType}`,
+            };
+    }
+    if (!addressValue) {
+        return {
+            hasError: true,
+            message: `addressValue is empty, addressType is ${addressType}`,
+        };
+    }
 
-	return {
-		hasError: false,
-		addressRemote: addressValue,
-		addressType,
-		portRemote,
-		rawDataIndex: addressValueIndex + addressLength,
-		วเลสVersion: version,
-		isUDP,
-	};
+    return {
+        hasError: false,
+        addressRemote: addressValue,
+        addressType,
+        portRemote,
+        rawDataIndex: addressValueIndex + addressLength,
+        วเลสVersion: version,
+        isUDP,
+        isMUX,
+    };
 }
 
 

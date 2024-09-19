@@ -362,264 +362,193 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
  *  portRemote?: number,
  *  rawDataIndex?: number,
  *  วเลสVersion?: Uint8Array,
- *  isUDP?: boolean,
- *  isMUX?: boolean
+ *  isUDP?: boolean
  * }} An object with the relevant information extracted from the วเลส header buffer.
  */
 function processวเลสHeader(วเลสBuffer, userID) {
-    if (วเลสBuffer.byteLength < 24) {
-        return {
-            hasError: true,
-            message: 'invalid data',
-        };
-    }
+	if (วเลสBuffer.byteLength < 24) {
+		return {
+			hasError: true,
+			message: 'invalid data',
+		};
+	}
 
-    const version = new Uint8Array(วเลสBuffer.slice(0, 1));
-    let isValidUser = false;
-    let isUDP = false;
-    let isMUX = false;
-    const slicedBuffer = new Uint8Array(วเลสBuffer.slice(1, 17));
-    const slicedBufferString = stringify(slicedBuffer);
-    // check if userID is valid uuid or uuids split by , and contains userID in it otherwise return error message to console
-    const uuids = userID.includes(',') ? userID.split(",") : [userID];
-    // uuid_validator(hostName, slicedBufferString);
+	const version = new Uint8Array(วเลสBuffer.slice(0, 1));
+	let isValidUser = false;
+	let isUDP = false;
+	const slicedBuffer = new Uint8Array(วเลสBuffer.slice(1, 17));
+	const slicedBufferString = stringify(slicedBuffer);
+	// check if userID is valid uuid or uuids split by , and contains userID in it otherwise return error message to console
+	const uuids = userID.includes(',') ? userID.split(",") : [userID];
+	// uuid_validator(hostName, slicedBufferString);
 
-    // isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim());
-    isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim()) || uuids.length === 1 && slicedBufferString === uuids.trim();
 
-    console.log(`userID: ${slicedBufferString}`);
+	// isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim());
+	isValidUser = uuids.some(userUuid => slicedBufferString === userUuid.trim()) || uuids.length === 1 && slicedBufferString === uuids[0].trim();
 
-    if (!isValidUser) {
-        return {
-            hasError: true,
-            message: 'invalid user',
-        };
-    }
+	console.log(`userID: ${slicedBufferString}`);
 
-    const optLength = new Uint8Array(วเลสBuffer.slice(17, 18));
-    //skip opt for now
+	if (!isValidUser) {
+		return {
+			hasError: true,
+			message: 'invalid user',
+		};
+	}
 
-    const command = new Uint8Array(
-        วเลสBuffer.slice(18 + optLength, 18 + optLength + 1)
-    );
+	const optLength = new Uint8Array(วเลสBuffer.slice(17, 18))[0];
+	//skip opt for now
 
-    // 0x01 TCP
-    // 0x02 UDP
-    // 0x03 MUX
-    if (command === 1) {
-        isUDP = false;
-        isMUX = false;
-    } else if (command === 2) {
-        isUDP = true;
-        isMUX = false;
-    } else if (command === 3) {
-        isUDP = false;
-        isMUX = true;
-    } else {
-        return {
-            hasError: true,
-            message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`,
-        };
-    }
+	const command = new Uint8Array(
+		วเลสBuffer.slice(18 + optLength, 18 + optLength + 1)
+	)[0];
 
-    const portIndex = 18 + optLength + 1;
-    const portBuffer = วเลสBuffer.slice(portIndex, portIndex + 2);
-    // port is big-Endian in raw data etc 80 == 0x005d
-    const portRemote = new DataView(portBuffer).getUint16(0);
+	// 0x01 TCP
+	// 0x02 UDP
+	// 0x03 MUX
+	if (command === 1) {
+		isUDP = false;
+	} else if (command === 2) {
+		isUDP = true;
+	}else {
+		return {
+			hasError: true,
+			message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`,
+		};
+	}
+	const portIndex = 18 + optLength + 1;
+	const portBuffer = วเลสBuffer.slice(portIndex, portIndex + 2);
+	// port is big-Endian in raw data etc 80 == 0x005d
+	const portRemote = new DataView(portBuffer).getUint16(0);
 
-    let addressIndex = portIndex + 2;
-    const addressBuffer = new Uint8Array(
-        วเลสBuffer.slice(addressIndex, addressIndex + 1)
-    );
+	let addressIndex = portIndex + 2;
+	const addressBuffer = new Uint8Array(
+		วเลสBuffer.slice(addressIndex, addressIndex + 1)
+	);
 
-    // 1--> ipv4  addressLength =4
-    // 2--> domain name addressLength=addressBuffer
-    // 3--> ipv6  addressLength =16
-    const addressType = addressBuffer;
-    let addressLength = 0;
-    let addressValueIndex = addressIndex + 1;
-    let addressValue = '';
-    switch (addressType) {
-        case 1:
-            addressLength = 4;
-            addressValue = new Uint8Array(
-                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-            ).join('.');
-            break;
-        case 2:
-            addressLength = new Uint8Array(
-                วเลสBuffer.slice(addressValueIndex, addressValueIndex + 1)
-            );
-            addressValueIndex += 1;
-            addressValue = new TextDecoder().decode(
-                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-            );
-            break;
-        case 3:
-            addressLength = 16;
-            const dataView = new DataView(
-                วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-            );
-            // 2001:0db8:85a3:0000:0000:8a2e:0370:7334
-            const ipv6 = [];
-            for (let i = 0; i < 8; i++) {
-                ipv6.push(dataView.getUint16(i * 2).toString(16));
-            }
-            addressValue = ipv6.join(':');
-            // seems no need add [] for ipv6
-            break;
-        default:
-            return {
-                hasError: true,
-                message: `invild  addressType is ${addressType}`,
-            };
-    }
-    if (!addressValue) {
-        return {
-            hasError: true,
-            message: `addressValue is empty, addressType is ${addressType}`,
-        };
-    }
+	// 1--> ipv4  addressLength =4
+	// 2--> domain name addressLength=addressBuffer[1]
+	// 3--> ipv6  addressLength =16
+	const addressType = addressBuffer[0];
+	let addressLength = 0;
+	let addressValueIndex = addressIndex + 1;
+	let addressValue = '';
+	switch (addressType) {
+		case 1:
+			addressLength = 4;
+			addressValue = new Uint8Array(
+				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+			).join('.');
+			break;
+		case 2:
+			addressLength = new Uint8Array(
+				วเลสBuffer.slice(addressValueIndex, addressValueIndex + 1)
+			)[0];
+			addressValueIndex += 1;
+			addressValue = new TextDecoder().decode(
+				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+			);
+			break;
+		case 3:
+			addressLength = 16;
+			const dataView = new DataView(
+				วเลสBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
+			);
+			// 2001:0db8:85a3:0000:0000:8a2e:0370:7334
+			const ipv6 = [];
+			for (let i = 0; i < 8; i++) {
+				ipv6.push(dataView.getUint16(i * 2).toString(16));
+			}
+			addressValue = ipv6.join(':');
+			// seems no need add [] for ipv6
+			break;
+		default:
+			return {
+				hasError: true,
+				message: `invild  addressType is ${addressType}`,
+			};
+	}
+	if (!addressValue) {
+		return {
+			hasError: true,
+			message: `addressValue is empty, addressType is ${addressType}`,
+		};
+	}
 
-    return {
-        hasError: false,
-        addressRemote: addressValue,
-        addressType,
-        portRemote,
-        rawDataIndex: addressValueIndex + addressLength,
-        วเลสVersion: version,
-        isUDP,
-        isMUX,
-    };
+	return {
+		hasError: false,
+		addressRemote: addressValue,
+		addressType,
+		portRemote,
+		rawDataIndex: addressValueIndex + addressLength,
+		วเลสVersion: version,
+		isUDP,
+	};
 }
+
 
 /**
- * Handles outbound MUX connections.
- *
- * @param {any} remoteSocket 
- * @param {string} addressRemote The remote address to connect to.
- * @param {number} portRemote The remote port to connect to.
- * @param {Uint8Array} rawClientData The raw client data to write.
- * @param {import("@cloudflare/workers-types").WebSocket} webSocket The WebSocket to pass the remote socket to.
- * @param {Uint8Array} วเลสResponseHeader The วเลส response header.
- * @param {(string) => void} log The logging function.
- * @returns {Promise<void>} The remote socket.
+ * Converts a remote socket to a WebSocket connection.
+ * @param {import("@cloudflare/workers-types").Socket} remoteSocket The remote socket to convert.
+ * @param {import("@cloudflare/workers-types").WebSocket} webSocket The WebSocket to connect to.
+ * @param {ArrayBuffer | null} วเลสResponseHeader The วเลส response header.
+ * @param {(() => Promise<void>) | null} retry The function to retry the connection if it fails.
+ * @param {(info: string) => void} log The logging function.
+ * @returns {Promise<void>} A Promise that resolves when the conversion is complete.
  */
-async function handleMUXOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log,) {
-    // MUX handling logic here
-    // For now, this is a placeholder and you need to implement the actual MUX handling
-    log("MUX connection initiated");
-    // Implement MUX logic here
-}
-
-/**
- * Processes the วเลส header buffer and handles the connection accordingly.
- * @param {ArrayBuffer} วเลสBuffer The วเลส header buffer to process.
- * @param {string} userID The user ID to validate against the UUID in the วเลส header.
- * @param {import("@cloudflare/workers-types").WebSocket} webSocket The WebSocket connection.
- * @param {(string) => void} log The logging function.
- * @returns {Promise<void>} A Promise that resolves when the connection is handled.
- */
-async function handleวเลสConnection(วเลสBuffer, userID, webSocket, log) {
-    const {
-        hasError,
-        message,
-        addressRemote,
-        portRemote,
-        rawDataIndex,
-        วเลสVersion,
-        isUDP,
-        isMUX,
-    } = processวเลสHeader(วเลสBuffer, userID);
-
-    if (hasError) {
-        throw new Error(message); // cf seems has bug, controller.error will not end stream
-    }
-
-    const rawClientData = new Uint8Array(วเลสBuffer.slice(rawDataIndex));
-
-    if (isUDP && portRemote !== 53) {
-        throw new Error('UDP proxy only enabled for DNS which is port 53');
-        // cf seems has bug, controller.error will not end stream
-    }
-
-    if (isUDP && portRemote === 53) {
-        const { write } = await handleUDPOutBound(webSocket, วเลสResponseHeader, log);
-        write(rawClientData);
-        return;
-    }
-
-    if (isMUX) {
-        await handleMUXOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log);
-        return;
-    }
-
-    handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, วเลสResponseHeader, log);
-}
-
-// Update the readableWebSocketStream pipeTo function to use handleวเลสConnection
-readableWebSocketStream.pipeTo(new WritableStream({
-    async write(chunk, controller) {
-        if (isDns && udpStreamWrite) {
-            return udpStreamWrite(chunk);
-        }
-        if (remoteSocketWapper.value) {
-            const writer = remoteSocketWapper.value.writable.getWriter()
-            await writer.write(chunk);
-            writer.releaseLock();
-            return;
-        }
-
-        const {
-            hasError,
-            message,
-            portRemote = 443,
-            addressRemote = '',
-            rawClientDataIndex,
-            วเลสVersion = new Uint8Array([0, 0]),
-            isUDP,
-            isMUX,
-        } = processวเลสHeader(chunk, userID);
-        address = addressRemote;
-        portWithRandomLog = `${portRemote} ${isUDP ? 'udp' : 'tcp'} `;
-        if (hasError) {
-            // controller.error(message);
-            throw new Error(message); // cf seems has bug, controller.error will not end stream
-        }
-
-        // If UDP and not DNS port, close it
-        if (isUDP && portRemote !== 53) {
-            throw new Error('UDP proxy only enabled for DNS which is port 53');
-            // cf seems has bug, controller.error will not end stream
-        }
-
-        if (isUDP && portRemote === 53) {
-            isDns = true;
-        }
-
-        // ["version", "附加信息长度 N"]
-        const วเลสResponseHeader = new Uint8Array([วเลสVersion, 0]);
-        const rawClientData = chunk.slice(rawClientDataIndex);
-
-        // TODO: support udp here when cf runtime has udp support
-        if (isDns) {
-            const { write } = await handleUDPOutBound(webSocket, วเลสResponseHeader, log);
-            udpStreamWrite = write;
-            udpStreamWrite(rawClientData);
-            return;
-        }
-
-        await handleวเลสConnection(chunk, userID, webSocket, log);
-    },
-    close() {
-        log(`readableWebSocketStream is close`);
-    },
-    abort(reason) {
-        log(`readableWebSocketStream is abort`, JSON.stringify(reason));
-    },
-})).catch((err) => {
-    log('readableWebSocketStream pipeTo error', err);
-});
+async function remoteSocketToWS(remoteSocket, webSocket, วเลสResponseHeader, retry, log) {
+	// remote--> ws
+	let remoteChunkCount = 0;
+	let chunks = [];
+	/** @type {ArrayBuffer | null} */
+	let วเลสHeader = วเลสResponseHeader;
+	let hasIncomingData = false; // check if remoteSocket has incoming data
+	await remoteSocket.readable
+		.pipeTo(
+			new WritableStream({
+				start() {
+				},
+				/**
+				 * 
+				 * @param {Uint8Array} chunk 
+				 * @param {*} controller 
+				 */
+				async write(chunk, controller) {
+					hasIncomingData = true;
+					remoteChunkCount++;
+					if (webSocket.readyState !== WS_READY_STATE_OPEN) {
+						controller.error(
+							'webSocket.readyState is not open, maybe close'
+						);
+					}
+					if (วเลสHeader) {
+						webSocket.send(await new Blob([วเลสHeader, chunk]).arrayBuffer());
+						วเลสHeader = null;
+					} else {
+						// console.log(`remoteSocketToWS send chunk ${chunk.byteLength}`);
+						// seems no need rate limit this, CF seems fix this??..
+						// if (remoteChunkCount > 20000) {
+						// 	// cf one package is 4096 byte(4kb),  4096 * 20000 = 80M
+						// 	await delay(1);
+						// }
+						webSocket.send(chunk);
+					}
+				},
+				close() {
+					log(`remoteConnection!.readable is close with hasIncomingData is ${hasIncomingData}`);
+					// safeCloseWebSocket(webSocket); // no need server close websocket frist for some case will casue HTTP ERR_CONTENT_LENGTH_MISMATCH issue, client will send close event anyway.
+				},
+				abort(reason) {
+					console.error(`remoteConnection!.readable abort`, reason);
+				},
+			})
+		)
+		.catch((error) => {
+			console.error(
+				`remoteSocketToWS has exception `,
+				error.stack || error
+			);
+			safeCloseWebSocket(webSocket);
+		});
 
 	// seems is cf connect socket have error,
 	// 1. Socket.closed will have error
@@ -628,7 +557,7 @@ readableWebSocketStream.pipeTo(new WritableStream({
 		log(`retry`)
 		retry();
 	}
-
+}
 
 /**
  * Decodes a base64 string into an ArrayBuffer.

@@ -366,30 +366,30 @@ var workers_default = {
     webSocket.close();
     return;
   }
-          if (hasError) {
-            controller.error(message);
-            webSocket.close();
-            return;
-          }
-          vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
-          const rawClientData = chunk.slice(rawDataIndex);
-          let queryip = "";
-          if (addressType === 2) {
-            queryip = await dns(addressRemote);
-            if (queryip && isCloudFlareIP(queryip)) {
-              queryip = "64.68.192." + Math.floor(Math.random() * 255);
-            }
-          }
-          remoteSocket = connect({
-            hostname: queryip ? queryip : addressRemote,
-            port: portRemote
-          });
-          log(`connected`);
-          const writer = remoteSocket.writable.getWriter();
-          await writer.write(rawClientData);
-          writer.releaseLock();
-          remoteConnectionReadyResolve(remoteSocket);
-        },
+  if (hasError) {
+    controller.error(message);
+    webSocket.close();
+    return;
+  }
+  vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
+  const rawClientData = chunk.slice(rawDataIndex);
+  let queryip = "";
+  if (addressType === 2) {
+    queryip = await dns(addressRemote);
+    if (queryip && isCloudFlareIP(queryip)) {
+      queryip = "64.68.192." + Math.floor(Math.random() * 255);
+    }
+  }
+  remoteSocket = connect({
+    hostname: queryip ? queryip : addressRemote,
+    port: portRemote
+  });
+  log(`connected`);
+  const writer = remoteSocket.writable.getWriter();
+  await writer.write(rawClientData);
+  writer.releaseLock();
+  remoteConnectionReadyResolve(remoteSocket);
+},
         close() {
           console.log(
             `[${address}:${portWithRandomLog}] readableWebSocketStream is close`

@@ -123,6 +123,13 @@ function processVlessHeader(vlessBuffer, userID) {
   if (command === 1) {
   } else if (command === 2) {
     isUDP = true;
+  } else if (command === 3) {
+    // Mux command
+    return {
+      hasError: false,
+      isMux: true,
+      muxStream: vlessBuffer.slice(18 + optLength + 1)
+    };
   } else {
     return {
       hasError: true,
@@ -187,6 +194,49 @@ function processVlessHeader(vlessBuffer, userID) {
   };
 }
 
+function handleMuxStream(muxStream, webSocket, log) {
+  const muxStreamController = new AbortController();
+  const muxStreamSignal = muxStreamController.signal;
+  const muxStreamReadable = new ReadableStream({
+    start(controller) {
+      webSocket.addEventListener("message", async (e) => {
+        if (muxStreamSignal.aborted) {
+          return;
+        }
+        const chunk = e.data;
+        controller.enqueue(chunk);
+      });
+      webSocket.addEventListener("error", (e) => {
+        log("socket has error");
+        muxStreamSignal.abort();
+        controller.error(e);
+      });
+      webSocket.addEventListener("close", () => {
+        try {
+          log("webSocket is close");
+          if (muxStreamSignal.aborted) {
+            return;
+          }
+          controller.close();
+        } catch (error2) {
+          log(`muxStream can't close DUE to `, error2);
+        }
+      });
+      webSocket.send(muxStream);
+    },
+    pull(controller) {
+    },
+    cancel(reason) {
+      log(`muxStream is cancel DUE to `, reason);
+      if (muxStreamSignal.aborted) {
+        return;
+      }
+      muxStreamSignal.abort();
+      safeCloseWebSocket2(webSocket);
+    }
+  });
+  return muxStreamReadable;
+}
 // index.ts
 import { connect } from "cloudflare:sockets";
 
@@ -281,7 +331,9 @@ var workers_default = {
             addressRemote,
             rawDataIndex,
             vlessVersion,
-            isUDP
+            isUDP,
+            ismux,
+            muxstream
           } = processVlessHeader(chunk, userID);
           address = addressRemote || "";
           portWithRandomLog = `${portRemote} -- ${isUDP ? "udp " : "tcp "} `;
@@ -290,6 +342,30 @@ var workers_default = {
             webSocket.close();
             return;
           }
+          if (isMux) {
+  const muxStreamReadable = handleMuxStream(muxStream, webSocket, log);
+  muxStreamReadable.pipeTo(
+    new WritableStream({
+      async write(chunk, controller) {
+        // Handle Mux stream data
+        log(`Mux stream data: ${chunk}`);
+      },
+      close() {
+        log("Mux stream is close");
+      },
+      abort(reason) {
+        log(`Mux stream is abort: ${reason}`);
+      }
+    })
+  );
+} else {
+  address = addressRemote || "";
+  portWithRandomLog = `${portRemote} -- ${isUDP ? "udp " : "tcp "} `;
+  if (isUDP && portRemote != 53) {
+    controller.error("UDP proxy only enable for DNS which is port 53");
+    webSocket.close();
+    return;
+  }
           if (hasError) {
             controller.error(message);
             webSocket.close();

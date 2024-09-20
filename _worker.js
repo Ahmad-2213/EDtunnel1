@@ -389,7 +389,7 @@ var workers_default = {
   await writer.write(rawClientData);
   writer.releaseLock();
   remoteConnectionReadyResolve(remoteSocket);
-},
+}
         close() {
           console.log(
             `[${address}:${portWithRandomLog}] readableWebSocketStream is close`
